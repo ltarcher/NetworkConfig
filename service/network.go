@@ -3,12 +3,13 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"networkconfig/models"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
-	"log"
 )
 
 // NetworkService 处理网络配置相关的操作
@@ -31,7 +32,7 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 	var interfaces []models.Interface
 	for _, iface := range ifaces {
 		log.Printf("正在处理接口: %s (MTU: %d, Flags: %v)", iface.Name, iface.MTU, iface.Flags)
-		
+
 		// 跳过回环接口
 		if iface.Flags&net.FlagLoopback != 0 {
 			log.Printf("跳过回环接口: %s", iface.Name)
@@ -76,14 +77,14 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 // GetInterface 获取指定网卡的详细信息
 func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 	log.Printf("开始获取接口 %s 的信息", name)
-	
+
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
 		log.Printf("获取网卡 %s 信息失败: %v", name, err)
 		return models.Interface{}, fmt.Errorf("获取网卡信息失败: %v", err)
 	}
 
-	log.Printf("接口 %s 基本信息: MTU=%d, Flags=%v, HardwareAddr=%s", 
+	log.Printf("接口 %s 基本信息: MTU=%d, Flags=%v, HardwareAddr=%s",
 		name, iface.MTU, iface.Flags, iface.HardwareAddr)
 
 	addrs, err := iface.Addrs()
@@ -135,9 +136,9 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 			// IPv4
 			gateway := getDefaultGateway(name)
 			dns := getDNSServers()
-			log.Printf("接口 %s IPv4地址: IP=%s, Mask=%s, Gateway=%s, DNS=%v", 
+			log.Printf("接口 %s IPv4地址: IP=%s, Mask=%s, Gateway=%s, DNS=%v",
 				name, ipNet.IP, net.IP(ipNet.Mask), gateway, dns)
-			
+
 			ifaceInfo.IPv4Config = models.IPv4Config{
 				IP:      ipNet.IP.String(),
 				Mask:    net.IP(ipNet.Mask).String(),
@@ -149,14 +150,14 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 			prefixLen, _ := ipNet.Mask.Size()
 			gateway := getIPv6Gateway(name)
 			dns := getIPv6DNSServers()
-			log.Printf("接口 %s IPv6地址: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v", 
+			log.Printf("接口 %s IPv6地址: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v",
 				name, ipNet.IP, prefixLen, gateway, dns)
-			
+
 			ifaceInfo.IPv6Config = models.IPv6Config{
 				IP:        ipNet.IP.String(),
 				PrefixLen: prefixLen,
 				Gateway:   gateway,
-				DNS:      dns,
+				DNS:       dns,
 			}
 		}
 	}
@@ -167,10 +168,19 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 
 // getHardwareInfo 获取网卡硬件信息
 func getHardwareInfo(name string) (models.Hardware, error) {
-	// 使用PowerShell命令获取网卡硬件信息
-	psCmd := fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | Select-Object MACAddress,Manufacturer,ProductName,AdapterType,NetConnectionID,Speed,PNPDeviceID | ConvertTo-Json`, name, name)
-	cmd := exec.Command("powershell", "-Command", psCmd)
-	
+	// 使用PowerShell命令获取网卡硬件信息，设置UTF-8编码
+	psCmd := fmt.Sprintf(`
+		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+		$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+		Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | 
+		Select-Object MACAddress,Manufacturer,ProductName,AdapterType,NetConnectionID,Speed,PNPDeviceID | 
+		ConvertTo-Json -Depth 1
+	`, name, name)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
+	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+	log.Printf("执行PowerShell命令获取网卡 %s 的硬件信息", name)
 	output, err := cmd.Output()
 	if err != nil {
 		// 获取错误详情
@@ -181,29 +191,40 @@ func getHardwareInfo(name string) (models.Hardware, error) {
 	}
 
 	if len(output) == 0 {
+		log.Printf("未找到网卡 %s 的硬件信息", name)
 		return models.Hardware{}, fmt.Errorf("未找到网卡硬件信息: %s", name)
 	}
 
-	fmt.Printf("Hardware command output for %s: %s\n", name, string(output))
+	// 尝试转换编码
+	decodedOutput, err := DecodeToUTF8(output)
+	if err != nil {
+		log.Printf("转换编码失败: %v", err)
+		return models.Hardware{}, fmt.Errorf("转换编码失败: %v", err)
+	}
+
+	log.Printf("网卡 %s 的原始硬件信息: %s", name, string(decodedOutput))
 
 	// 解析JSON输出
 	var result struct {
-		MACAddress    string `json:"MACAddress"`
-		Manufacturer  string `json:"Manufacturer"`
-		ProductName   string `json:"ProductName"`
-		AdapterType   string `json:"AdapterType"`
-		Speed         uint64 `json:"Speed"`
+		MACAddress   string `json:"MACAddress"`
+		Manufacturer string `json:"Manufacturer"`
+		ProductName  string `json:"ProductName"`
+		AdapterType  string `json:"AdapterType"`
+		Speed        uint64 `json:"Speed"`
 		PNPDeviceID  string `json:"PNPDeviceID"`
 	}
 
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(decodedOutput, &result); err != nil {
+		log.Printf("解析硬件信息JSON失败: %v", err)
 		return models.Hardware{}, fmt.Errorf("解析硬件信息失败: %v", err)
 	}
+
+	log.Printf("成功解析网卡 %s 的硬件信息: %+v", name, result)
 
 	// 获取物理媒体类型
 	mediaCmd := exec.Command("powershell", "-Command",
 		fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' } | Select-Object PhysicalAdapter | ConvertTo-Json`, name))
-	
+
 	mediaOutput, err := mediaCmd.Output()
 	if err == nil {
 		var mediaResult struct {
@@ -212,21 +233,42 @@ func getHardwareInfo(name string) (models.Hardware, error) {
 		if err := json.Unmarshal(mediaOutput, &mediaResult); err == nil {
 			if mediaResult.PhysicalAdapter {
 				// 获取总线类型
-				busCmd := exec.Command("powershell", "-Command",
-					fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' } | Select-Object Caption | ConvertTo-Json`, name))
-				
-				if busOutput, err := busCmd.Output(); err == nil {
-					var busResult struct {
-						Caption string `json:"Caption"`
-					}
-					if err := json.Unmarshal(busOutput, &busResult); err == nil {
-						// 从Caption中提取总线类型
-						if strings.Contains(busResult.Caption, "PCI") {
-							result.AdapterType = "PCI"
-						} else if strings.Contains(busResult.Caption, "USB") {
-							result.AdapterType = "USB"
+				// 获取总线类型，设置UTF-8编码
+				busCmd := fmt.Sprintf(`
+					[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+					$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+					Get-WmiObject Win32_NetworkAdapter | 
+						Where-Object { $_.NetConnectionID -eq '%s' } | 
+						Select-Object Caption | 
+						ConvertTo-Json -Depth 1
+				`, name)
+
+				cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", busCmd)
+				cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+				if busOutput, err := cmd.Output(); err == nil {
+					// 转换编码
+					decodedBusOutput, err := DecodeToUTF8(busOutput)
+					if err == nil {
+						var busResult struct {
+							Caption string `json:"Caption"`
 						}
+						if err := json.Unmarshal(decodedBusOutput, &busResult); err == nil {
+							log.Printf("网卡 %s 的总线信息: %s", name, busResult.Caption)
+							// 从Caption中提取总线类型
+							if strings.Contains(busResult.Caption, "PCI") {
+								result.AdapterType = "PCI"
+							} else if strings.Contains(busResult.Caption, "USB") {
+								result.AdapterType = "USB"
+							}
+						} else {
+							log.Printf("解析总线信息JSON失败: %v", err)
+						}
+					} else {
+						log.Printf("转换总线信息编码失败: %v", err)
 					}
+				} else {
+					log.Printf("获取总线信息失败: %v", err)
 				}
 			}
 		}
@@ -253,37 +295,65 @@ func getHardwareInfo(name string) (models.Hardware, error) {
 
 // getDriverInfo 获取网卡驱动信息
 func getDriverInfo(name string) (models.Driver, error) {
-	// 使用PowerShell命令获取网卡驱动信息
-	psCmd := fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | Get-WmiObject -Class Win32_PnPSignedDriver | Select-Object DriverVersion,DriverProvider,DriverDate,DeviceName,InfName | ConvertTo-Json`, name, name)
-	cmd := exec.Command("powershell", "-Command", psCmd)
-	
+	log.Printf("开始获取网卡 %s 的驱动信息", name)
+
+	// 使用PowerShell命令获取网卡驱动信息，设置UTF-8编码
+	psCmd := fmt.Sprintf(`
+		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+		$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+		$ErrorActionPreference = 'Stop'
+		Get-WmiObject Win32_NetworkAdapter | 
+			Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | 
+			Get-WmiObject -Class Win32_PnPSignedDriver | 
+			Select-Object DriverVersion,DriverProvider,DriverDate,DeviceName,InfName | 
+			ConvertTo-Json -Depth 1
+	`, name, name)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+	cmd.Env = append(os.Environ(),
+		"PYTHONIOENCODING=utf-8",
+		"POWERSHELL_TELEMETRY_OPTOUT=1")
+
 	output, err := cmd.Output()
 	if err != nil {
 		// 获取错误详情
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Printf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
 			return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
 		}
+		log.Printf("执行PowerShell命令失败: %v", err)
 		return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v", err)
 	}
 
 	if len(output) == 0 {
+		log.Printf("未找到网卡 %s 的驱动信息", name)
 		return models.Driver{}, fmt.Errorf("未找到网卡驱动信息: %s", name)
 	}
 
-	fmt.Printf("Driver command output for %s: %s\n", name, string(output))
+	// 尝试转换编码
+	decodedOutput, err := DecodeToUTF8(output)
+	if err != nil {
+		log.Printf("转换驱动信息编码失败: %v", err)
+		return models.Driver{}, fmt.Errorf("转换编码失败: %v", err)
+	}
+
+	log.Printf("网卡 %s 的原始驱动信息: %s", name, string(decodedOutput))
 
 	// 解析JSON输出
 	var result struct {
-		DriverVersion   string `json:"DriverVersion"`
-		DriverProvider  string `json:"DriverProvider"`
+		DriverVersion  string `json:"DriverVersion"`
+		DriverProvider string `json:"DriverProvider"`
 		DriverDate     string `json:"DriverDate"`
 		DeviceName     string `json:"DeviceName"`
 		InfName        string `json:"InfName"`
 	}
 
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(decodedOutput, &result); err != nil {
+		log.Printf("解析驱动信息JSON失败: %v", err)
 		return models.Driver{}, fmt.Errorf("解析驱动信息失败: %v", err)
 	}
+
+	log.Printf("成功解析网卡 %s 的驱动信息: %+v", name, result)
 
 	// 格式化安装日期
 	dateInstalled := "Unknown"
@@ -294,12 +364,12 @@ func getDriverInfo(name string) (models.Driver, error) {
 	}
 
 	return models.Driver{
-		Name:         result.DeviceName,
-		Version:      result.DriverVersion,
-		Provider:     result.DriverProvider,
+		Name:          result.DeviceName,
+		Version:       result.DriverVersion,
+		Provider:      result.DriverProvider,
 		DateInstalled: dateInstalled,
-		Status:       "OK", // 默认值，可以根据实际情况修改
-		Path:         result.InfName,
+		Status:        "OK", // 默认值，可以根据实际情况修改
+		Path:          result.InfName,
 	}, nil
 }
 
@@ -329,7 +399,7 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 		config.IP,
 		config.Mask,
 		config.Gateway)
-	
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("设置IPv4地址失败: %v", err)
 	}
