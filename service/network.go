@@ -1,0 +1,490 @@
+package service
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"networkconfig/models"
+	"os/exec"
+	"strings"
+	"time"
+	"log"
+)
+
+// NetworkService 处理网络配置相关的操作
+type NetworkService struct{}
+
+// NewNetworkService 创建新的NetworkService实例
+func NewNetworkService() *NetworkService {
+	return &NetworkService{}
+}
+
+// GetInterfaces 获取所有网卡信息
+func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("获取网卡列表失败: %v", err)
+	}
+
+	log.Printf("系统中共发现 %d 个网络接口", len(ifaces))
+
+	var interfaces []models.Interface
+	for _, iface := range ifaces {
+		log.Printf("正在处理接口: %s (MTU: %d, Flags: %v)", iface.Name, iface.MTU, iface.Flags)
+		
+		// 跳过回环接口
+		if iface.Flags&net.FlagLoopback != 0 {
+			log.Printf("跳过回环接口: %s", iface.Name)
+			continue
+		}
+
+		// 跳过未启用的接口
+		if iface.Flags&net.FlagUp == 0 {
+			log.Printf("跳过未启用的接口: %s", iface.Name)
+			continue
+		}
+
+		ifaceInfo, err := s.GetInterface(iface.Name)
+		if err != nil {
+			log.Printf("获取接口 %s 信息失败: %v", iface.Name, err)
+			// 创建基本接口信息
+			basicInfo := models.Interface{
+				Name:        iface.Name,
+				Description: iface.Name,
+				Status:      getInterfaceStatus(iface.Flags),
+				Hardware: models.Hardware{
+					MACAddress: iface.HardwareAddr.String(),
+				},
+				Driver: models.Driver{
+					Name: iface.Name,
+				},
+			}
+			interfaces = append(interfaces, basicInfo)
+			continue
+		}
+		interfaces = append(interfaces, ifaceInfo)
+	}
+
+	if len(interfaces) == 0 {
+		log.Println("警告: 没有找到可用的网络接口")
+	}
+
+	log.Printf("成功获取 %d 个网络接口的信息", len(interfaces))
+	return interfaces, nil
+}
+
+// GetInterface 获取指定网卡的详细信息
+func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
+	log.Printf("开始获取接口 %s 的信息", name)
+	
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		log.Printf("获取网卡 %s 信息失败: %v", name, err)
+		return models.Interface{}, fmt.Errorf("获取网卡信息失败: %v", err)
+	}
+
+	log.Printf("接口 %s 基本信息: MTU=%d, Flags=%v, HardwareAddr=%s", 
+		name, iface.MTU, iface.Flags, iface.HardwareAddr)
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		log.Printf("获取网卡 %s 地址失败: %v", name, err)
+		return models.Interface{}, fmt.Errorf("获取网卡地址失败: %v", err)
+	}
+
+	log.Printf("接口 %s 有 %d 个地址", name, len(addrs))
+
+	ifaceInfo := models.Interface{
+		Name:        iface.Name,
+		Description: getInterfaceDescription(name),
+		Status:      getInterfaceStatus(iface.Flags),
+	}
+
+	// 获取硬件和驱动信息（即使失败也继续）
+	hardware, err := getHardwareInfo(name)
+	if err != nil {
+		log.Printf("获取接口 %s 硬件信息失败: %v", name, err)
+		ifaceInfo.Hardware = models.Hardware{
+			MACAddress: iface.HardwareAddr.String(),
+		}
+	} else {
+		ifaceInfo.Hardware = hardware
+		log.Printf("接口 %s 硬件信息: %+v", name, hardware)
+	}
+
+	driver, err := getDriverInfo(name)
+	if err != nil {
+		log.Printf("获取接口 %s 驱动信息失败: %v", name, err)
+		ifaceInfo.Driver = models.Driver{
+			Name: iface.Name,
+		}
+	} else {
+		ifaceInfo.Driver = driver
+		log.Printf("接口 %s 驱动信息: %+v", name, driver)
+	}
+
+	// 获取IPv4和IPv6配置
+	for i, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			log.Printf("接口 %s 地址 %d 不是有效的IPNet", name, i)
+			continue
+		}
+
+		if ipNet.IP.To4() != nil {
+			// IPv4
+			gateway := getDefaultGateway(name)
+			dns := getDNSServers()
+			log.Printf("接口 %s IPv4地址: IP=%s, Mask=%s, Gateway=%s, DNS=%v", 
+				name, ipNet.IP, net.IP(ipNet.Mask), gateway, dns)
+			
+			ifaceInfo.IPv4Config = models.IPv4Config{
+				IP:      ipNet.IP.String(),
+				Mask:    net.IP(ipNet.Mask).String(),
+				Gateway: gateway,
+				DNS:     dns,
+			}
+		} else {
+			// IPv6
+			prefixLen, _ := ipNet.Mask.Size()
+			gateway := getIPv6Gateway(name)
+			dns := getIPv6DNSServers()
+			log.Printf("接口 %s IPv6地址: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v", 
+				name, ipNet.IP, prefixLen, gateway, dns)
+			
+			ifaceInfo.IPv6Config = models.IPv6Config{
+				IP:        ipNet.IP.String(),
+				PrefixLen: prefixLen,
+				Gateway:   gateway,
+				DNS:      dns,
+			}
+		}
+	}
+
+	log.Printf("成功获取接口 %s 的完整信息", name)
+	return ifaceInfo, nil
+}
+
+// getHardwareInfo 获取网卡硬件信息
+func getHardwareInfo(name string) (models.Hardware, error) {
+	// 使用PowerShell命令获取网卡硬件信息
+	psCmd := fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | Select-Object MACAddress,Manufacturer,ProductName,AdapterType,NetConnectionID,Speed,PNPDeviceID | ConvertTo-Json`, name, name)
+	cmd := exec.Command("powershell", "-Command", psCmd)
+	
+	output, err := cmd.Output()
+	if err != nil {
+		// 获取错误详情
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return models.Hardware{}, fmt.Errorf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
+		}
+		return models.Hardware{}, fmt.Errorf("执行PowerShell命令失败: %v", err)
+	}
+
+	if len(output) == 0 {
+		return models.Hardware{}, fmt.Errorf("未找到网卡硬件信息: %s", name)
+	}
+
+	fmt.Printf("Hardware command output for %s: %s\n", name, string(output))
+
+	// 解析JSON输出
+	var result struct {
+		MACAddress    string `json:"MACAddress"`
+		Manufacturer  string `json:"Manufacturer"`
+		ProductName   string `json:"ProductName"`
+		AdapterType   string `json:"AdapterType"`
+		Speed         uint64 `json:"Speed"`
+		PNPDeviceID  string `json:"PNPDeviceID"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return models.Hardware{}, fmt.Errorf("解析硬件信息失败: %v", err)
+	}
+
+	// 获取物理媒体类型
+	mediaCmd := exec.Command("powershell", "-Command",
+		fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' } | Select-Object PhysicalAdapter | ConvertTo-Json`, name))
+	
+	mediaOutput, err := mediaCmd.Output()
+	if err == nil {
+		var mediaResult struct {
+			PhysicalAdapter bool `json:"PhysicalAdapter"`
+		}
+		if err := json.Unmarshal(mediaOutput, &mediaResult); err == nil {
+			if mediaResult.PhysicalAdapter {
+				// 获取总线类型
+				busCmd := exec.Command("powershell", "-Command",
+					fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' } | Select-Object Caption | ConvertTo-Json`, name))
+				
+				if busOutput, err := busCmd.Output(); err == nil {
+					var busResult struct {
+						Caption string `json:"Caption"`
+					}
+					if err := json.Unmarshal(busOutput, &busResult); err == nil {
+						// 从Caption中提取总线类型
+						if strings.Contains(busResult.Caption, "PCI") {
+							result.AdapterType = "PCI"
+						} else if strings.Contains(busResult.Caption, "USB") {
+							result.AdapterType = "USB"
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 转换速度为可读格式
+	speedStr := "Unknown"
+	if result.Speed > 0 {
+		speed := float64(result.Speed) / 1000000 // 转换为Mbps
+		speedStr = fmt.Sprintf("%.0f Mbps", speed)
+	}
+
+	return models.Hardware{
+		MACAddress:    result.MACAddress,
+		Manufacturer:  result.Manufacturer,
+		ProductName:   result.ProductName,
+		AdapterType:   result.AdapterType,
+		PhysicalMedia: "Ethernet", // 默认值，可以根据实际情况修改
+		Speed:         speedStr,
+		BusType:       result.AdapterType,
+		PNPDeviceID:   result.PNPDeviceID,
+	}, nil
+}
+
+// getDriverInfo 获取网卡驱动信息
+func getDriverInfo(name string) (models.Driver, error) {
+	// 使用PowerShell命令获取网卡驱动信息
+	psCmd := fmt.Sprintf(`Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | Get-WmiObject -Class Win32_PnPSignedDriver | Select-Object DriverVersion,DriverProvider,DriverDate,DeviceName,InfName | ConvertTo-Json`, name, name)
+	cmd := exec.Command("powershell", "-Command", psCmd)
+	
+	output, err := cmd.Output()
+	if err != nil {
+		// 获取错误详情
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
+		}
+		return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v", err)
+	}
+
+	if len(output) == 0 {
+		return models.Driver{}, fmt.Errorf("未找到网卡驱动信息: %s", name)
+	}
+
+	fmt.Printf("Driver command output for %s: %s\n", name, string(output))
+
+	// 解析JSON输出
+	var result struct {
+		DriverVersion   string `json:"DriverVersion"`
+		DriverProvider  string `json:"DriverProvider"`
+		DriverDate     string `json:"DriverDate"`
+		DeviceName     string `json:"DeviceName"`
+		InfName        string `json:"InfName"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return models.Driver{}, fmt.Errorf("解析驱动信息失败: %v", err)
+	}
+
+	// 格式化安装日期
+	dateInstalled := "Unknown"
+	if result.DriverDate != "" {
+		if date, err := time.Parse("20060102150405.999999-070", result.DriverDate); err == nil {
+			dateInstalled = date.Format("2006-01-02")
+		}
+	}
+
+	return models.Driver{
+		Name:         result.DeviceName,
+		Version:      result.DriverVersion,
+		Provider:     result.DriverProvider,
+		DateInstalled: dateInstalled,
+		Status:       "OK", // 默认值，可以根据实际情况修改
+		Path:         result.InfName,
+	}, nil
+}
+
+// ConfigureInterface 配置网卡
+func (s *NetworkService) ConfigureInterface(name string, config models.InterfaceConfig) error {
+	if config.IPv4Config != nil {
+		if err := s.configureIPv4(name, *config.IPv4Config); err != nil {
+			return fmt.Errorf("配置IPv4失败: %v", err)
+		}
+	}
+
+	if config.IPv6Config != nil {
+		if err := s.configureIPv6(name, *config.IPv6Config); err != nil {
+			return fmt.Errorf("配置IPv6失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// configureIPv4 配置IPv4地址
+func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) error {
+	// 设置IP地址和子网掩码
+	cmd := exec.Command("netsh", "interface", "ipv4", "set", "address",
+		fmt.Sprintf("name=%s", name),
+		"static",
+		config.IP,
+		config.Mask,
+		config.Gateway)
+	
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("设置IPv4地址失败: %v", err)
+	}
+
+	// 设置DNS服务器
+	if len(config.DNS) > 0 {
+		for i, dns := range config.DNS {
+			cmd := exec.Command("netsh", "interface", "ipv4", "set", "dns",
+				fmt.Sprintf("name=%s", name),
+				"static",
+				dns)
+			if i > 0 {
+				cmd = exec.Command("netsh", "interface", "ipv4", "add", "dns",
+					fmt.Sprintf("name=%s", name),
+					dns,
+					fmt.Sprintf("index=%d", i+1))
+			}
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("设置DNS服务器失败: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// configureIPv6 配置IPv6地址
+func (s *NetworkService) configureIPv6(name string, config models.IPv6Config) error {
+	// 设置IPv6地址
+	cmd := exec.Command("netsh", "interface", "ipv6", "set", "address",
+		fmt.Sprintf("interface=%s", name),
+		fmt.Sprintf("address=%s", config.IP),
+		fmt.Sprintf("store=persistent"))
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("设置IPv6地址失败: %v", err)
+	}
+
+	// 设置IPv6网关
+	if config.Gateway != "" {
+		cmd = exec.Command("netsh", "interface", "ipv6", "add", "route",
+			"::/0",
+			fmt.Sprintf("interface=%s", name),
+			config.Gateway)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("设置IPv6网关失败: %v", err)
+		}
+	}
+
+	// 设置IPv6 DNS服务器
+	if len(config.DNS) > 0 {
+		for i, dns := range config.DNS {
+			cmd := exec.Command("netsh", "interface", "ipv6", "set", "dns",
+				fmt.Sprintf("name=%s", name),
+				"static",
+				dns)
+			if i > 0 {
+				cmd = exec.Command("netsh", "interface", "ipv6", "add", "dns",
+					fmt.Sprintf("name=%s", name),
+					dns,
+					fmt.Sprintf("index=%d", i+1))
+			}
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("设置IPv6 DNS服务器失败: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// 辅助函数
+
+func getInterfaceDescription(name string) string {
+	cmd := exec.Command("netsh", "interface", "show", "interface", name)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// 解析输出获取描述信息
+	return strings.TrimSpace(string(output))
+}
+
+func getInterfaceStatus(flags net.Flags) string {
+	if flags&net.FlagUp != 0 {
+		return "up"
+	}
+	return "down"
+}
+
+func getDefaultGateway(name string) string {
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "route", name)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// 解析输出获取默认网关
+	return parseGateway(string(output))
+}
+
+func getIPv6Gateway(name string) string {
+	cmd := exec.Command("netsh", "interface", "ipv6", "show", "route", name)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// 解析输出获取IPv6默认网关
+	return parseGateway(string(output))
+}
+
+func getDNSServers() []string {
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "dns")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	// 解析输出获取DNS服务器列表
+	return parseDNSServers(string(output))
+}
+
+func getIPv6DNSServers() []string {
+	cmd := exec.Command("netsh", "interface", "ipv6", "show", "dns")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	// 解析输出获取IPv6 DNS服务器列表
+	return parseDNSServers(string(output))
+}
+
+func parseGateway(output string) string {
+	// 简单实现，实际使用时需要更复杂的解析逻辑
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "0.0.0.0/0") {
+			fields := strings.Fields(line)
+			if len(fields) > 3 {
+				return fields[3]
+			}
+		}
+	}
+	return ""
+}
+
+func parseDNSServers(output string) []string {
+	// 简单实现，实际使用时需要更复杂的解析逻辑
+	var servers []string
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "DNS servers") {
+			fields := strings.Fields(line)
+			if len(fields) > 2 {
+				servers = append(servers, fields[2])
+			}
+		}
+	}
+	return servers
+}
