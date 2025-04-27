@@ -302,11 +302,18 @@ func getDriverInfo(name string) (models.Driver, error) {
 		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 		$PSDefaultParameterValues['*:Encoding'] = 'utf8'
 		$ErrorActionPreference = 'Stop'
-		Get-WmiObject Win32_NetworkAdapter | 
-			Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' } | 
-			Get-WmiObject -Class Win32_PnPSignedDriver | 
-			Select-Object DriverVersion,DriverProvider,DriverDate,DeviceName,InfName | 
-			ConvertTo-Json -Depth 1
+		
+		# 首先获取网络适配器的PNPDeviceID
+		$adapter = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq '%s' -or $_.Name -eq '%s' }
+		if ($adapter) {
+			# 使用PNPDeviceID查找对应的驱动程序
+			Get-WmiObject Win32_PnPSignedDriver | 
+				Where-Object { $_.DeviceID -eq $adapter.PNPDeviceID } |
+				Select-Object DriverVersion,DriverProvider,DriverDate,DeviceName,InfName |
+				ConvertTo-Json -Depth 1
+		} else {
+			Write-Error "找不到指定的网络适配器"
+		}
 	`, name, name)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
@@ -318,8 +325,12 @@ func getDriverInfo(name string) (models.Driver, error) {
 	if err != nil {
 		// 获取错误详情
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			log.Printf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
-			return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v, stderr: %s", err, string(exitErr.Stderr))
+			stderr := string(exitErr.Stderr)
+			log.Printf("获取网卡 %s 驱动信息时出错: %v\nstderr: %s", name, err, stderr)
+			if strings.Contains(stderr, "找不到指定的网络适配器") {
+				return models.Driver{}, fmt.Errorf("找不到网卡: %s", name)
+			}
+			return models.Driver{}, fmt.Errorf("获取驱动信息失败: %v", err)
 		}
 		log.Printf("执行PowerShell命令失败: %v", err)
 		return models.Driver{}, fmt.Errorf("执行PowerShell命令失败: %v", err)
@@ -327,7 +338,7 @@ func getDriverInfo(name string) (models.Driver, error) {
 
 	if len(output) == 0 {
 		log.Printf("未找到网卡 %s 的驱动信息", name)
-		return models.Driver{}, fmt.Errorf("未找到网卡驱动信息: %s", name)
+		return models.Driver{}, fmt.Errorf("未找到网卡 %s 的驱动信息", name)
 	}
 
 	// 尝试转换编码
