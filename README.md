@@ -5,9 +5,10 @@
 ## 功能特点
 
 - 获取系统网卡列表
-- 获取单个网卡详细信息
+- 获取单个网卡详细信息（包含硬件和驱动信息）
 - 配置网卡IPv4参数（IP地址、子网掩码、网关、DNS）
 - 配置网卡IPv6参数（IP地址、前缀长度、网关、DNS）
+- 完整的中文支持
 - RESTful API设计
 - 支持跨域请求
 - 完整的错误处理
@@ -86,6 +87,24 @@ GET /api/v1/interfaces
       "prefix_len": 64,
       "gateway": "fe80::1",
       "dns": ["2001:4860:4860::8888"]
+    },
+    "hardware": {
+      "mac_address": "00:11:22:33:44:55",
+      "manufacturer": "Intel Corporation",
+      "product_name": "Intel(R) Ethernet Connection I219-V",
+      "adapter_type": "Ethernet 802.3",
+      "physical_media": "Ethernet",
+      "speed": "1000 Mbps",
+      "bus_type": "PCI",
+      "pnp_device_id": "PCI\\VEN_8086&DEV_15B8"
+    },
+    "driver": {
+      "name": "Intel(R) Ethernet Connection I219-V",
+      "version": "12.18.9.23",
+      "provider": "Intel",
+      "date_installed": "2024-01-01",
+      "status": "OK",
+      "path": "C:\\Windows\\System32\\DriverStore\\FileRepository\\e1d68x64.inf_amd64_abc123\\e1d68x64.inf"
     }
   }
 ]
@@ -134,7 +153,8 @@ NetworkConfig/
 ├── api/                 # API 处理层
 │   └── handlers.go      # API 处理函数
 ├── service/             # 业务逻辑层
-│   └── network.go       # 网络配置相关业务逻辑
+│   ├── network.go       # 网络配置相关业务逻辑
+│   └── encoding.go      # 编码处理相关功能
 ├── models/              # 数据模型
 │   └── network.go       # 网络相关数据结构
 └── docs/               # 文档
@@ -175,6 +195,11 @@ coverage/coverage.html
    - 建议在受信任的网络环境中使用
    - 可以配置防火墙规则限制访问
 
+4. **中文支持**
+   - 支持中文网卡名称和描述
+   - 正确处理中文编码
+   - 日志支持中文输出
+
 ## 故障排除
 
 1. **服务无法启动**
@@ -191,6 +216,16 @@ coverage/coverage.html
    - 确认服务正在运行
    - 检查网络连接
    - 验证API请求格式
+
+4. **中文显示问题**
+   - 确认系统使用UTF-8编码
+   - 检查PowerShell输出编码设置
+   - 验证日志文件编码
+
+5. **硬件信息获取失败**
+   - 确认WMI服务正在运行
+   - 检查网卡驱动是否正确安装
+   - 验证系统权限设置
 
 ## 贡献
 
