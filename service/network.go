@@ -149,7 +149,7 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 		if ipNet.IP.To4() != nil {
 			// IPv4
 			gateway := getDefaultGateway(name)
-			dns := getDNSServers()
+			dns := getDNSServers(name)
 			log.Printf("接口 %s IPv4地址: IP=%s, Mask=%s, Gateway=%s, DNS=%v",
 				name, ipNet.IP, net.IP(ipNet.Mask), gateway, dns)
 
@@ -163,7 +163,7 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 			// IPv6
 			prefixLen, _ := ipNet.Mask.Size()
 			gateway := getIPv6Gateway(name)
-			dns := getIPv6DNSServers()
+			dns := getIPv6DNSServers(name)
 			log.Printf("接口 %s IPv6地址: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v",
 				name, ipNet.IP, prefixLen, gateway, dns)
 
@@ -584,24 +584,60 @@ func getIPv6Gateway(name string) string {
 	return parseGateway(string(output))
 }
 
-func getDNSServers() []string {
-	cmd := exec.Command("netsh", "interface", "ipv4", "show", "dns")
+func getDNSServers(name string) []string {
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "dnsservers", "name="+name)
 	output, err := cmd.Output()
 	if err != nil {
-		return nil
+		log.Printf("获取接口 %s 的DNS服务器失败: %v", name, err)
+		return []string{"unavailable"}
 	}
-	// 解析输出获取DNS服务器列表
-	return parseDNSServers(string(output))
+
+	servers := []string{}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "DNS 服务器") || strings.Contains(line, "DNS Servers") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				server := strings.TrimSpace(parts[1])
+				if net.ParseIP(server) != nil {
+					servers = append(servers, server)
+				}
+			}
+		}
+	}
+
+	if len(servers) == 0 {
+		return []string{"none"}
+	}
+	return servers
 }
 
-func getIPv6DNSServers() []string {
-	cmd := exec.Command("netsh", "interface", "ipv6", "show", "dns")
+func getIPv6DNSServers(name string) []string {
+	cmd := exec.Command("netsh", "interface", "ipv6", "show", "dnsservers", "name="+name)
 	output, err := cmd.Output()
 	if err != nil {
-		return nil
+		log.Printf("获取接口 %s 的IPv6 DNS服务器失败: %v", name, err)
+		return []string{"unavailable"}
 	}
-	// 解析输出获取IPv6 DNS服务器列表
-	return parseDNSServers(string(output))
+
+	servers := []string{}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "DNS 服务器") || strings.Contains(line, "DNS Servers") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				server := strings.TrimSpace(parts[1])
+				if net.ParseIP(server) != nil {
+					servers = append(servers, server)
+				}
+			}
+		}
+	}
+
+	if len(servers) == 0 {
+		return []string{"none"}
+	}
+	return servers
 }
 
 func parseGateway(output string) string {
