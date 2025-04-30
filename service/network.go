@@ -502,13 +502,62 @@ func getInterfaceStatus(flags net.Flags) string {
 }
 
 func getDefaultGateway(name string) string {
+	// 方法1: 使用netsh命令
 	cmd := exec.Command("netsh", "interface", "ipv4", "show", "route", name)
 	output, err := cmd.Output()
-	if err != nil {
-		return ""
+	if err == nil {
+		gateway := parseGateway(string(output))
+		if gateway != "" {
+			log.Printf("通过netsh获取到接口 %s 的网关: %s", name, gateway)
+			return gateway
+		}
+	} else {
+		log.Printf("netsh获取网关失败: %v", err)
 	}
-	// 解析输出获取默认网关
-	return parseGateway(string(output))
+
+	// 方法2: 使用route print命令
+	cmd = exec.Command("route", "print", "-4")
+	outputBytes, err := cmd.Output()
+	if err == nil {
+		output := string(outputBytes)
+		gateway := parseGateway(output)
+		if gateway != "" {
+			log.Printf("通过route print获取到接口 %s 的网关: %s", name, gateway)
+			return gateway
+		}
+	} else {
+		log.Printf("route print获取网关失败: %v", err)
+	}
+
+	// 方法3: 使用ipconfig命令
+	cmd = exec.Command("ipconfig")
+	output, err = cmd.Output()
+	if err == nil {
+		lines := strings.Split(string(output), "\n")
+		for i, line := range lines {
+			if strings.Contains(line, name) {
+				// 查找后续的默认网关行
+				for j := i + 1; j < len(lines); j++ {
+					if strings.Contains(lines[j], "默认网关") ||
+						strings.Contains(lines[j], "Default Gateway") {
+						parts := strings.Split(lines[j], ":")
+						if len(parts) > 1 {
+							gateway := strings.TrimSpace(parts[1])
+							if gateway != "" {
+								log.Printf("通过ipconfig获取到接口 %s 的网关: %s", name, gateway)
+								return gateway
+							}
+						}
+					}
+				}
+			}
+		}
+	} else {
+		log.Printf("ipconfig获取网关失败: %v", err)
+	}
+
+	log.Printf("无法获取接口 %s 的网关", name)
+	return ""
 }
 
 func getIPv6Gateway(name string) string {
@@ -542,16 +591,53 @@ func getIPv6DNSServers() []string {
 }
 
 func parseGateway(output string) string {
-	// 简单实现，实际使用时需要更复杂的解析逻辑
 	lines := strings.Split(output, "\n")
+
+	// 尝试匹配不同格式的网关输出
 	for _, line := range lines {
-		if strings.Contains(line, "0.0.0.0/0") {
+		line = strings.TrimSpace(line)
+
+		// 格式1: 0.0.0.0/0 <metric> <interface> <gateway>
+		if strings.HasPrefix(line, "0.0.0.0/0") {
 			fields := strings.Fields(line)
-			if len(fields) > 3 {
+			if len(fields) >= 4 {
 				return fields[3]
 			}
 		}
+
+		// 格式2: 0.0.0.0 <mask> <gateway> <interface> <metric>
+		if strings.HasPrefix(line, "0.0.0.0") {
+			fields := strings.Fields(line)
+			if len(fields) >= 3 {
+				return fields[2]
+			}
+		}
+
+		// 格式3: 默认网关: <gateway>
+		if strings.HasPrefix(line, "默认网关:") || strings.HasPrefix(line, "Default Gateway:") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
 	}
+
+	// 如果上述方法都失败，尝试使用route print命令
+	cmd := exec.Command("route", "print", "0.0.0.0")
+	outputBytes, err := cmd.Output()
+	if err == nil {
+		output := string(outputBytes)
+		lines := strings.Split(output, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "0.0.0.0") {
+				fields := strings.Fields(line)
+				if len(fields) >= 3 && fields[0] == "0.0.0.0" {
+					return fields[2]
+				}
+			}
+		}
+	}
+
 	return ""
 }
 
