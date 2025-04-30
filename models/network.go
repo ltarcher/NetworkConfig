@@ -5,6 +5,7 @@ type Interface struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Status      string     `json:"status"`
+	DHCPEnabled bool       `json:"dhcp_enabled"`
 	IPv4Config  IPv4Config `json:"ipv4_config"`
 	IPv6Config  IPv6Config `json:"ipv6_config"`
 	Hardware    Hardware   `json:"hardware"`
@@ -20,17 +21,17 @@ type Hardware struct {
 	PhysicalMedia string `json:"physical_media"`
 	Speed         string `json:"speed"`
 	BusType       string `json:"bus_type"`
-	PNPDeviceID  string `json:"pnp_device_id"`
+	PNPDeviceID   string `json:"pnp_device_id"`
 }
 
 // Driver 表示网卡驱动信息
 type Driver struct {
-	Name         string `json:"name"`
-	Version      string `json:"version"`
-	Provider     string `json:"provider"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	Provider      string `json:"provider"`
 	DateInstalled string `json:"date_installed"`
-	Status       string `json:"status"`
-	Path         string `json:"path"`
+	Status        string `json:"status"`
+	Path          string `json:"path"`
 }
 
 // IPv4Config 表示IPv4配置信息

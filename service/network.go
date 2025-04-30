@@ -95,10 +95,24 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 
 	log.Printf("接口 %s 有 %d 个地址", name, len(addrs))
 
+	// 检查DHCP状态
+	dhcpEnabled := false
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "config", "name="+name)
+	if output, err := cmd.Output(); err == nil {
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "DHCP enabled") {
+				dhcpEnabled = strings.Contains(line, "Yes")
+				break
+			}
+		}
+	}
+
 	ifaceInfo := models.Interface{
 		Name:        iface.Name,
 		Description: getInterfaceDescription(name),
 		Status:      getInterfaceStatus(iface.Flags),
+		DHCPEnabled: dhcpEnabled,
 	}
 
 	// 获取硬件和驱动信息（即使失败也继续）
