@@ -50,6 +50,21 @@
             </div>
           </template>
           
+          <!-- 接口基本信息展示 -->
+          <el-descriptions :column="2" border class="interface-info">
+            <el-descriptions-item label="MAC地址">
+              {{ currentInterface.hardware?.mac_address || '未知' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="驱动名称">
+              {{ currentInterface.driver?.name || '未知' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="DHCP状态">
+              <el-tag :type="currentInterface.dhcp_enabled ? 'success' : 'info'">
+                {{ currentInterface.dhcp_enabled ? '启用' : '禁用' }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+          
           <el-form
             ref="formRef"
             :model="ipv4Form"
@@ -579,5 +594,21 @@ onUnmounted(() => {
 
 .log-item .message {
   white-space: pre-wrap;
+}
+
+.interface-info {
+  margin-bottom: 20px;
+  background-color: #fff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.interface-info :deep(.el-descriptions__body) {
+  background-color: #f5f7fa;
+}
+
+.interface-info :deep(.el-descriptions__label) {
+  width: 100px;
+  font-weight: bold;
 }
 </style>
