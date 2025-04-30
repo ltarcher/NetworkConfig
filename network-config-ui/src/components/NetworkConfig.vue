@@ -1,0 +1,583 @@
+<template>
+  <div class="network-config">
+    <!-- 顶部标题 -->
+    <el-header class="header">
+      <h2>网络配置</h2>
+    </el-header>
+
+    <!-- 主体内容区域 -->
+    <el-container class="main-container">
+      <!-- 左侧接口列表 -->
+      <el-aside width="250px" class="aside">
+        <el-card class="interface-list">
+          <template #header>
+            <div class="card-header">
+              <span>网络接口列表</span>
+              <el-button type="primary" size="small" @click="refreshInterfaces">
+                刷新
+              </el-button>
+            </div>
+          </template>
+          <el-menu
+            :default-active="currentInterface?.name"
+            @select="handleInterfaceSelect"
+          >
+            <el-menu-item
+              v-for="iface in interfaces"
+              :key="iface.name"
+              :index="iface.name"
+            >
+              <el-icon><Connection /></el-icon>
+              <span>{{ iface.name }}</span>
+              <el-tag
+                size="small"
+                :type="iface.status === 'up' ? 'success' : 'danger'"
+                class="status-tag"
+              >
+                {{ iface.status }}
+              </el-tag>
+            </el-menu-item>
+          </el-menu>
+        </el-card>
+      </el-aside>
+
+      <!-- 右侧配置面板 -->
+      <el-main class="main">
+        <el-card v-if="currentInterface" class="config-form">
+          <template #header>
+            <div class="card-header">
+              <span>{{ currentInterface.name }} 配置</span>
+            </div>
+          </template>
+          
+          <el-form
+            ref="formRef"
+            :model="ipv4Form"
+            :rules="formRules"
+            label-width="100px"
+          >
+            <el-form-item label="IP地址" prop="ip">
+              <el-input v-model="ipv4Form.ip" placeholder="请输入IP地址" />
+            </el-form-item>
+            
+            <el-form-item label="子网掩码" prop="mask">
+              <el-input v-model="ipv4Form.mask" placeholder="请输入子网掩码" />
+            </el-form-item>
+            
+            <el-form-item label="网关" prop="gateway">
+              <el-input v-model="ipv4Form.gateway" placeholder="请输入网关地址" />
+            </el-form-item>
+            
+            <el-form-item label="DNS服务器">
+              <div v-for="(dns, index) in ipv4Form.dns" :key="index" class="dns-input">
+                <el-input v-model="ipv4Form.dns[index]" placeholder="请输入DNS服务器地址" />
+                <el-button
+                  type="danger"
+                  size="small"
+                  icon="Delete"
+                  @click="removeDns(index)"
+                  :disabled="index === 0"
+                />
+              </div>
+              <el-button
+                type="primary"
+                size="small"
+                icon="Plus"
+                @click="addDns"
+                class="add-dns-btn"
+              >
+                添加DNS
+              </el-button>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button type="primary" @click="handleSubmit">保存配置</el-button>
+              <el-button @click="resetForm">重置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <el-empty v-else description="请选择一个网络接口" />
+      </el-main>
+    </el-container>
+
+    <!-- 底部调试控制台 -->
+    <el-footer class="footer">
+      <el-card class="debug-console">
+        <template #header>
+          <div class="card-header">
+            <div class="console-title">
+              <span>调试控制台</span>
+              <el-tag size="small" type="info" class="log-count">
+                {{ filteredLogs.length }} 条日志
+              </el-tag>
+            </div>
+            <div class="console-controls">
+              <el-radio-group v-model="logFilter" size="small" class="filter-group">
+                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button value="info">信息</el-radio-button>
+                <el-radio-button value="success">成功</el-radio-button>
+                <el-radio-button value="error">错误</el-radio-button>
+              </el-radio-group>
+              <el-button type="primary" size="small" @click="clearLogs">
+                清除日志
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <div class="debug-logs" ref="debugLogsRef" @scroll="handleScroll">
+          <div
+            v-for="(log, index) in filteredLogs"
+            :key="index"
+            :class="['log-item', log.type]"
+          >
+            <span class="timestamp">{{ new Date(log.timestamp).toLocaleTimeString() }}</span>
+            <span class="message">{{ log.message }}</span>
+          </div>
+        </div>
+      </el-card>
+    </el-footer>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { useNetworkStore } from '../stores/network'
+import { networkApi } from '../utils/api'
+import { ElMessage } from 'element-plus'
+import { Connection } from '@element-plus/icons-vue'
+
+// 状态管理
+const store = useNetworkStore()
+const interfaces = computed(() => {
+  try {
+    return store.interfaces || []
+  } catch (e) {
+    console.error('Error in interfaces computed:', e)
+    return []
+  }
+})
+
+const currentInterface = computed(() => {
+  try {
+    return store.currentInterface || null
+  } catch (e) {
+    console.error('Error in currentInterface computed:', e)
+    return null
+  }
+})
+
+const debugLogs = computed(() => {
+  try {
+    return store.debugLogs || []
+  } catch (e) {
+    console.error('Error in debugLogs computed:', e)
+    return []
+  }
+})
+const logFilter = computed({
+  get: () => store.logFilter,
+  set: (value) => store.setLogFilter(value)
+})
+
+const filteredLogs = computed(() => {
+  try {
+    return store.filteredLogs || []
+  } catch (e) {
+    console.error('Error in filteredLogs computed:', e)
+    return []
+  }
+})
+
+// 表单数据
+const formRef = ref(null)
+const ipv4Form = ref({
+  ip: '',
+  mask: '',
+  gateway: '',
+  dns: ['']
+})
+
+// 表单验证规则
+const formRules = {
+  ip: [
+    { required: true, message: '请输入IP地址', trigger: 'blur' },
+    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的IP地址', trigger: 'blur' }
+  ],
+  mask: [
+    { required: true, message: '请输入子网掩码', trigger: 'blur' },
+    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的子网掩码', trigger: 'blur' }
+  ],
+  gateway: [
+    { required: true, message: '请输入网关地址', trigger: 'blur' },
+    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的网关地址', trigger: 'blur' }
+  ]
+}
+
+// 方法
+const refreshInterfaces = async () => {
+  try {
+    const data = await networkApi.getInterfaces()
+    store.interfaces = data
+    if (data.length > 0 && !currentInterface.value) {
+      await handleInterfaceSelect(data[0].name)
+    }
+  } catch (error) {
+    ElMessage.error('获取网络接口列表失败')
+  }
+}
+
+const handleInterfaceSelect = async (name) => {
+  try {
+    const data = await networkApi.getInterface(name)
+    store.currentInterface = data
+    // 更新表单数据
+    ipv4Form.value = {
+      ip: data.ipv4_config?.ip || '',
+      mask: data.ipv4_config?.mask || '',
+      gateway: data.ipv4_config?.gateway || '',
+      dns: data.ipv4_config?.dns || ['']
+    }
+  } catch (error) {
+    ElMessage.error('获取接口详情失败')
+  }
+}
+
+const handleSubmit = async () => {
+  if (!formRef.value) return
+  
+  try {
+    await formRef.value.validate()
+    await networkApi.updateIPv4Config(currentInterface.value.name, {
+      ip: ipv4Form.value.ip,
+      mask: ipv4Form.value.mask,
+      gateway: ipv4Form.value.gateway,
+      dns: ipv4Form.value.dns.filter(dns => dns.trim() !== '')
+    })
+    ElMessage.success('配置更新成功')
+    await refreshInterfaces()
+  } catch (error) {
+    if (error.message) {
+      ElMessage.error(error.message)
+    }
+  }
+}
+
+const resetForm = () => {
+  if (formRef.value) {
+    formRef.value.resetFields()
+  }
+}
+
+const addDns = () => {
+  ipv4Form.value.dns.push('')
+}
+
+const removeDns = (index) => {
+  ipv4Form.value.dns.splice(index, 1)
+}
+
+const clearLogs = () => {
+  store.clearDebugLogs()
+}
+
+// 调试日志相关
+const debugLogsRef = ref(null)
+const shouldAutoScroll = ref(true)
+let isUserScrolling = false
+
+const scrollToBottom = () => {
+  try {
+    if (!debugLogsRef.value || !shouldAutoScroll.value) return
+    
+    debugLogsRef.value.scrollTop = debugLogsRef.value.scrollHeight
+  } catch (e) {
+    console.error('Error in scrollToBottom:', e)
+  }
+}
+
+// 监听日志变化
+watch(() => debugLogs.value.length, () => {
+  try {
+    // 使用nextTick确保DOM更新后再滚动
+    nextTick(() => {
+      if (!isUserScrolling && debugLogsRef.value) {
+        scrollToBottom()
+      }
+    })
+  } catch (e) {
+    console.error('Error in logs watcher:', e)
+  }
+})
+
+// 处理用户手动滚动
+const handleScroll = () => {
+  try {
+    if (!debugLogsRef.value) return
+    
+    const { scrollTop, scrollHeight, clientHeight } = debugLogsRef.value
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50
+    
+    // 更新自动滚动状态
+    shouldAutoScroll.value = isAtBottom
+    
+    // 标记用户是否正在滚动
+    if (!isAtBottom) {
+      isUserScrolling = true
+      setTimeout(() => {
+        isUserScrolling = false
+      }, 1000) // 1秒后重置滚动状态
+    }
+  } catch (e) {
+    console.error('Error in handleScroll:', e)
+  }
+}
+
+// 生命周期
+onMounted(() => {
+  try {
+    refreshInterfaces()
+    
+    // 添加滚动事件监听
+    if (debugLogsRef.value) {
+      debugLogsRef.value.addEventListener('scroll', handleScroll)
+    }
+  } catch (e) {
+    console.error('Error in onMounted:', e)
+  }
+})
+
+onUnmounted(() => {
+  try {
+    // 移除滚动事件监听
+    if (debugLogsRef.value) {
+      debugLogsRef.value.removeEventListener('scroll', handleScroll)
+    }
+  } catch (e) {
+    console.error('Error in onUnmounted:', e)
+  }
+})
+</script>
+
+<style scoped>
+.network-config {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  background-color: #fff;
+  border-bottom: 1px solid #dcdfe6;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  height: 60px;
+  flex-shrink: 0;
+}
+
+.main-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.aside {
+  background-color: #f5f7fa;
+  border-right: 1px solid #dcdfe6;
+  padding: 20px;
+  width: 250px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.main {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.footer {
+  height: 300px;
+  padding: 20px;
+  background-color: #f5f7fa;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.interface-list {
+  height: 100%;
+}
+
+.config-form {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-tag {
+  float: right;
+  margin-top: 2px;
+}
+
+.dns-input {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.add-dns-btn {
+  margin-top: 10px;
+}
+
+.debug-console {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-console :deep(.el-card__body) {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+.debug-logs {
+  height: 100%;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  scroll-behavior: smooth;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+/* 自定义滚动条样式 */
+.debug-logs::-webkit-scrollbar {
+  width: 6px;
+}
+
+.debug-logs::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.debug-logs::-webkit-scrollbar-thumb {
+  background: #909399;
+  border-radius: 3px;
+}
+
+.debug-logs::-webkit-scrollbar-thumb:hover {
+  background: #606266;
+}
+
+/* 日志项样式优化 */
+.log-item {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+}
+
+.log-item:last-child {
+  border-bottom: none;
+}
+
+.log-item .timestamp {
+  color: #909399;
+  margin-right: 10px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.log-item .message {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+}
+
+.log-item.error {
+  color: #f56c6c;
+  background-color: #fef0f0;
+}
+
+.log-item.success {
+  color: #67c23a;
+  background-color: #f0f9eb;
+}
+
+/* 调试控制台布局优化 */
+.debug-console :deep(.el-card__header) {
+  padding: 10px 15px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.debug-console .card-header {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.debug-console .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+}
+
+.console-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.console-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-group {
+  margin-right: 10px;
+}
+
+.log-count {
+  margin-left: 5px;
+}
+
+.debug-console .card-header .el-button {
+  padding: 5px 10px;
+}
+
+.log-item {
+  padding: 4px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.log-item.error {
+  color: #f56c6c;
+  background-color: #fef0f0;
+}
+
+.log-item.success {
+  color: #67c23a;
+  background-color: #f0f9eb;
+}
+
+.log-item .timestamp {
+  color: #909399;
+  margin-right: 10px;
+}
+
+.log-item .message {
+  white-space: pre-wrap;
+}
+</style>
