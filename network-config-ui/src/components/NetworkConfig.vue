@@ -110,28 +110,6 @@
                 :disabled="currentInterface.dns_auto"
                 style="margin-top: 10px;" />
             </el-form-item>
-            
-            <el-form-item label="DNS服务器">
-              <div v-for="(dns, index) in ipv4Form.dns" :key="index" class="dns-input">
-                <el-input v-model="ipv4Form.dns[index]" placeholder="请输入DNS服务器地址" />
-                <el-button
-                  type="danger"
-                  size="small"
-                  icon="Delete"
-                  @click="removeDns(index)"
-                  :disabled="index === 0"
-                />
-              </div>
-              <el-button
-                type="primary"
-                size="small"
-                icon="Plus"
-                @click="addDns"
-                class="add-dns-btn"
-              >
-                添加DNS
-              </el-button>
-            </el-form-item>
 
             <el-form-item>
               <el-button type="primary" @click="handleSubmit">保存配置</el-button>
@@ -330,14 +308,6 @@ const resetForm = () => {
   if (formRef.value) {
     formRef.value.resetFields()
   }
-}
-
-const addDns = () => {
-  ipv4Form.value.dns.push('')
-}
-
-const removeDns = (index) => {
-  ipv4Form.value.dns.splice(index, 1)
 }
 
 const clearLogs = () => {
