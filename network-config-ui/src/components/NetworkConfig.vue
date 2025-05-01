@@ -136,17 +136,20 @@
               </template>
               
               <el-form
-                ref="wifiForm"
+                ref="wifiFormRef"
                 :model="wifiForm"
                 :rules="wifiRules"
                 label-width="80px">
-                <el-form-item label="密码" prop="password" v-if="selectedWifi.security !== 'Open'">
+                <el-form-item label="密码" v-if="selectedWifi.security !== 'Open'">
                   <el-input
-                    v-model.lazy="wifiForm.password"
+                    ref="passwordInput"
+                    v-model="wifiForm.password"
                     type="password"
                     placeholder="请输入WiFi密码"
                     show-password
-                    @input="handlePasswordInput">
+                    :validate-event="false"
+                    @compositionstart="compositionStart"
+                    @compositionend="compositionEnd">
                   </el-input>
                 </el-form-item>
                 
@@ -271,41 +274,40 @@ const wifiList = ref([])
 const selectedWifi = ref(null)
 const wifiLoading = ref(false)
 const connecting = ref(false)
+
+const passwordInput = ref(null)
+const isComposing = ref(false)
+// 表单数据
+const formRef = ref(null)
+const wifiFormRef = ref(null)
 const wifiForm = ref({
   password: ''
 })
 
-const passwordValidation = ref(false)
-const debounceTimer = ref(null)
-
-const handlePasswordInput = (value) => {
-  // 清除之前的定时器
-  if (debounceTimer.value) {
-    clearTimeout(debounceTimer.value)
+// 重置表单
+const resetWifiForm = () => {
+  wifiForm.value.password = ''
+  if (wifiFormRef.value) {
+    wifiFormRef.value.resetFields()
   }
-  
-  // 设置新的定时器，300ms防抖
-  debounceTimer.value = setTimeout(() => {
-    passwordValidation.value = value.length > 0
-  }, 300)
 }
 
-const wifiRules = {
-  password: [
-    { 
-      required: true, 
-      message: '请输入WiFi密码', 
-      trigger: 'blur',
-      validator: (rule, value, callback) => {
-        if (!value || value.trim() === '') {
-          callback(new Error('请输入WiFi密码'))
-        } else {
-          callback()
-        }
-      }
-    }
-  ]
+// 输入法事件处理
+const compositionStart = () => {
+  isComposing.value = true
 }
+
+const compositionEnd = () => {
+  isComposing.value = false
+}
+
+// 重置密码表单
+const resetPasswordForm = () => {
+  wifiForm.value.password = ''
+}
+
+// 空规则对象
+const wifiRules = {}
 
 const interfaces = computed(() => {
   try {
@@ -361,7 +363,6 @@ const filteredLogs = computed(() => {
 })
 
 // 表单数据
-const formRef = ref(null)
 const ipv4Form = ref({
   ip: '',
   mask: '',
