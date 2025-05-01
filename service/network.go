@@ -400,6 +400,14 @@ func getDriverInfo(name string) (models.Driver, error) {
 
 // ConfigureInterface 配置网卡
 func (s *NetworkService) ConfigureInterface(name string, config models.InterfaceConfig) error {
+	// 兼容处理：如果顶层字段有值，合并到ipv4_config
+	if config.DHCPEnabled && config.IPv4Config != nil {
+		config.IPv4Config.DHCP = config.DHCPEnabled
+	}
+	if config.DNSAuto && config.IPv4Config != nil {
+		config.IPv4Config.DNSAuto = config.DNSAuto
+	}
+
 	if config.IPv4Config != nil {
 		if err := s.configureIPv4(name, *config.IPv4Config); err != nil {
 			return fmt.Errorf("配置IPv4失败: %v", err)

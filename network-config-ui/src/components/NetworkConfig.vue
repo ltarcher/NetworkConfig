@@ -329,9 +329,11 @@ const handleSubmit = async () => {
     }
     
     await networkApi.updateIPv4Config(currentInterface.value.name, {
-      ipv4_config: config,
-      dhcp_enabled: currentInterface.value.dhcp_enabled,
-      dns_auto: currentInterface.value.dns_auto
+      ipv4_config: {
+        ...config,
+        dhcp: currentInterface.value.dhcp_enabled,
+        dnsAuto: currentInterface.value.dns_auto
+      }
     })
     
     ElMessage.success('配置更新成功')

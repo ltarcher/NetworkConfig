@@ -40,8 +40,8 @@ type IPv4Config struct {
 	Mask    string   `json:"mask"`
 	Gateway string   `json:"gateway"`
 	DNS     []string `json:"dns"`
-	DHCP    bool     `json:"dhcp"`
-	DNSAuto bool     `json:"dnsAuto"`
+	DHCP    bool     `json:"dhcp" json:"dhcp_enabled,omitempty"` // 支持两种命名
+	DNSAuto bool     `json:"dnsAuto" json:"dns_auto,omitempty"`  // 支持两种命名
 }
 
 // IPv6Config 表示IPv6配置信息
@@ -56,4 +56,8 @@ type IPv6Config struct {
 type InterfaceConfig struct {
 	IPv4Config *IPv4Config `json:"ipv4_config,omitempty"`
 	IPv6Config *IPv6Config `json:"ipv6_config,omitempty"`
+
+	// 以下字段仅为兼容旧版本前端，新版本不应使用
+	DHCPEnabled bool `json:"dhcp_enabled,omitempty"` // 兼容字段
+	DNSAuto     bool `json:"dns_auto,omitempty"`     // 兼容字段
 }
