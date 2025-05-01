@@ -175,7 +175,7 @@
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useNetworkStore } from '../stores/network'
 import { networkApi } from '../utils/api'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
 
 // 状态管理
@@ -272,6 +272,12 @@ const formRules = {
 
 // 方法
 const refreshInterfaces = async () => {
+  const loading = ElLoading.service({
+    lock: true,
+    text: '正在刷新网卡列表...',
+    background: 'rgba(0, 0, 0, 0.7)'
+  })
+  
   try {
     const data = await networkApi.getInterfaces()
     store.interfaces = data
@@ -280,6 +286,8 @@ const refreshInterfaces = async () => {
     }
   } catch (error) {
     ElMessage.error('获取网络接口列表失败')
+  } finally {
+    loading.close()
   }
 }
 
