@@ -50,6 +50,12 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 			continue
 		}
 
+		// 跳过Virtual虚拟接口
+		if strings.Contains(iface.Name, "Virtual") {
+			log.Printf("跳过Virtual虚拟接口: %s", iface.Name)
+			continue
+		}
+
 		// 跳过未启用的接口
 		if iface.Flags&net.FlagUp == 0 {
 			log.Printf("未启用的接口: %s", iface.Name)
@@ -59,19 +65,22 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 		ifaceInfo, err := s.GetInterface(iface.Name)
 		if err != nil {
 			log.Printf("获取接口 %s 信息失败: %v", iface.Name, err)
+
 			// 创建基本接口信息
-			basicInfo := models.Interface{
-				Name:        iface.Name,
-				Description: iface.Name,
-				Status:      getInterfaceStatus(iface.Flags),
-				Hardware: models.Hardware{
-					MACAddress: iface.HardwareAddr.String(),
-				},
-				Driver: models.Driver{
-					Name: iface.Name,
-				},
-			}
-			interfaces = append(interfaces, basicInfo)
+			//basicInfo := models.Interface{
+			//	Name:        iface.Name,
+			//	Description: iface.Name,
+			//	Status:      getInterfaceStatus(iface.Flags),
+			//	Hardware: models.Hardware{
+			//		MACAddress: iface.HardwareAddr.String(),
+			//	},
+			//	Driver: models.Driver{
+			//		Name: iface.Name,
+			//	},
+			//}
+
+			// 获取硬件信息失败的，可能是虚拟网卡，跳过
+			// interfaces = append(interfaces, basicInfo)
 			continue
 		}
 		interfaces = append(interfaces, ifaceInfo)
@@ -133,6 +142,7 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 		ifaceInfo.Hardware = models.Hardware{
 			MACAddress: iface.HardwareAddr.String(),
 		}
+		return ifaceInfo, nil
 	} else {
 		ifaceInfo.Hardware = hardware
 		log.Printf("接口 %s 硬件信息: %+v", name, hardware)

@@ -71,8 +71,8 @@
             <el-descriptions-item label="MAC地址">
               {{ currentInterface.hardware?.mac_address || '未知' }}
             </el-descriptions-item>
-            <el-descriptions-item label="驱动名称">
-              {{ currentInterface.driver?.name || '未知' }}
+            <el-descriptions-item label="产品名称">
+              {{ currentInterface.hardware?.product_name || '未知' }}
             </el-descriptions-item>
             <el-descriptions-item label="DHCP状态">
               <el-tag :type="currentInterface.dhcp_enabled ? 'success' : 'info'">
