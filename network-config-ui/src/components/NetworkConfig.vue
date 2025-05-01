@@ -292,6 +292,12 @@ const refreshInterfaces = async () => {
 }
 
 const handleInterfaceSelect = async (name) => {
+  const loading = ElLoading.service({
+    lock: true,
+    text: '正在获取网卡信息...',
+    background: 'rgba(0, 0, 0, 0.7)'
+  })
+  
   try {
     const data = await networkApi.getInterface(name)
     store.currentInterface = data
@@ -304,6 +310,8 @@ const handleInterfaceSelect = async (name) => {
     }
   } catch (error) {
     ElMessage.error('获取接口详情失败')
+  } finally {
+    loading.close()
   }
 }
 
