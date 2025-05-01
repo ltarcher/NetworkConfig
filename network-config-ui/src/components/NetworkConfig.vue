@@ -468,7 +468,7 @@ const connectWifi = async () => {
   
   connecting.value = true
   try {
-    await networkApi.connectWifi({
+    await networkApi.connectToWiFi({
       interface: currentInterface.value.name,
       ssid: selectedWifi.value.ssid,
       password: wifiForm.value.password
