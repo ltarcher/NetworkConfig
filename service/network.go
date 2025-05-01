@@ -128,6 +128,17 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 	} else {
 		ifaceInfo.Hardware = hardware
 		log.Printf("接口 %s 硬件信息: %+v", name, hardware)
+
+		// 如果是无线网卡，获取当前连接的SSID
+		if hardware.AdapterType == models.AdapterTypeWireless {
+			ssid, err := getConnectedSSID(name)
+			if err != nil {
+				log.Printf("获取接口 %s 的SSID失败: %v", name, err)
+			} else if ssid != "" {
+				ifaceInfo.ConnectedSSID = ssid
+				log.Printf("接口 %s 当前连接的热点: %s", name, ssid)
+			}
+		}
 	}
 
 	driver, err := getDriverInfo(name)
@@ -1681,6 +1692,27 @@ func (s *NetworkService) CheckConnectivity(target string) (models.ConnectivityRe
 }
 
 // GetAvailableWiFiHotspots 获取指定WIFI网卡可连接的热点列表
+// getConnectedSSID 获取无线网卡当前连接的SSID
+func getConnectedSSID(interfaceName string) (string, error) {
+	cmd := exec.Command("netsh", "wlan", "show", "interfaces", "interface="+interfaceName)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("获取SSID失败: %v", err)
+	}
+
+	// 解析输出查找SSID行
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "SSID") && strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				return strings.TrimSpace(parts[1]), nil
+			}
+		}
+	}
+	return "", nil // 没有连接热点时返回空
+}
+
 func (s *NetworkService) GetAvailableWiFiHotspots(interfaceName string) ([]models.WiFiHotspot, error) {
 	log.Printf("开始获取接口 %s 的可用WIFI热点列表", interfaceName)
 

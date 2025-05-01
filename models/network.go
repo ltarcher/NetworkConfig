@@ -2,14 +2,15 @@ package models
 
 // Interface 表示网卡信息
 type Interface struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Status      string     `json:"status"`
-	DHCPEnabled bool       `json:"dhcp_enabled"`
-	IPv4Config  IPv4Config `json:"ipv4_config"`
-	IPv6Config  IPv6Config `json:"ipv6_config"`
-	Hardware    Hardware   `json:"hardware"`
-	Driver      Driver     `json:"driver"`
+	Name          string     `json:"name"`
+	Description   string     `json:"description"`
+	Status        string     `json:"status"`
+	ConnectedSSID string     `json:"connected_ssid,omitempty"` // 当前连接的WiFi热点SSID(仅无线网卡有效)
+	DHCPEnabled   bool       `json:"dhcp_enabled"`
+	IPv4Config    IPv4Config `json:"ipv4_config"`
+	IPv6Config    IPv6Config `json:"ipv6_config"`
+	Hardware      Hardware   `json:"hardware"`
+	Driver        Driver     `json:"driver"`
 }
 
 // Hardware 表示网卡硬件信息

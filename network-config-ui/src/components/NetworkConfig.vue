@@ -46,6 +46,12 @@
               >
                 {{ iface.status }}
               </el-tag>
+              <span 
+                v-if="iface.hardware?.adapter_type === 'wireless' && iface.connected_ssid"
+                class="ssid-tag"
+              >
+                {{ iface.connected_ssid }}
+              </span>
             </el-menu-item>
           </el-menu>
         </el-card>
@@ -896,5 +902,15 @@ onUnmounted(() => {
 .interface-info :deep(.el-descriptions__label) {
   width: 100px;
   font-weight: bold;
+}
+
+.ssid-tag {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 </style>
