@@ -419,7 +419,7 @@ func (s *NetworkService) ConfigureInterface(name string, config models.Interface
 func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) error {
 	// 设置IP地址和子网掩码
 	cmd := exec.Command("netsh", "interface", "ipv4", "set", "address",
-		fmt.Sprintf("name=%s", name),
+		fmt.Sprintf(`name="%s"`, name),
 		"static",
 		config.IP,
 		config.Mask,
@@ -433,12 +433,12 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 	if len(config.DNS) > 0 {
 		for i, dns := range config.DNS {
 			cmd := exec.Command("netsh", "interface", "ipv4", "set", "dns",
-				fmt.Sprintf("name=%s", name),
+				fmt.Sprintf(`name="%s"`, name),
 				"static",
 				dns)
 			if i > 0 {
 				cmd = exec.Command("netsh", "interface", "ipv4", "add", "dns",
-					fmt.Sprintf("name=%s", name),
+					fmt.Sprintf(`name="%s"`, name),
 					dns,
 					fmt.Sprintf("index=%d", i+1))
 			}

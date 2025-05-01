@@ -52,13 +52,15 @@ export const networkApi = {
 
   // 获取指定网络接口详情
   getInterface: async (name) => {
-    const response = await api.get(`/interfaces/${name}`)
+    const encodedName = encodeURIComponent(name)
+    const response = await api.get(`/interfaces/${encodedName}`)
     return response.data
   },
 
   // 更新IPv4配置
   updateIPv4Config: async (name, config) => {
-    const response = await api.put(`/interfaces/${name}/ipv4`, config)
+    const encodedName = encodeURIComponent(name)
+    const response = await api.put(`/interfaces/${encodedName}/ipv4`, config)
     return response.data
   }
 }
