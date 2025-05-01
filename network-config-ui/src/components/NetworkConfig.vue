@@ -508,8 +508,14 @@ const connectWifi = async () => {
       ssid: selectedWifi.value.ssid,
       password: wifiForm.value.password
     })
-    ElMessage.success('连接成功')
-    await refreshInterfaces() // 刷新接口状态
+    ElMessage.success('连接成功，等待网络就绪...')
+    
+    // 等待5秒后刷新网卡状态
+    await new Promise(resolve => setTimeout(resolve, 5000))
+    
+    // 刷新网卡状态
+    await refreshInterfaces()
+    ElMessage.success('网络已就绪')
   } catch (error) {
     ElMessage.error('连接失败: ' + error.message)
   } finally {
