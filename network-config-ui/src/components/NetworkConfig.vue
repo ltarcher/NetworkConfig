@@ -719,6 +719,46 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.interface-list :deep(.el-menu) {
+  border-right: none;
+  overflow-x: auto;
+}
+
+.interface-list :deep(.el-menu)::-webkit-scrollbar {
+  height: 6px;
+}
+
+.interface-list :deep(.el-menu)::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.interface-list :deep(.el-menu)::-webkit-scrollbar-thumb {
+  background: #909399;
+  border-radius: 3px;
+}
+
+.interface-list :deep(.el-menu)::-webkit-scrollbar-thumb:hover {
+  background: #606266;
+}
+
+.interface-list :deep(.el-menu-item) {
+  min-width: 200px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  padding-right: 20px;
+}
+
+.interface-list :deep(.el-menu-item) > * {
+  flex-shrink: 0;
+}
+
+.interface-list :deep(.el-menu-item) .ssid-tag {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .config-form {
   max-width: 800px;
   margin: 0 auto;
