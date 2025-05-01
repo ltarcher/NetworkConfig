@@ -458,11 +458,14 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 		log.Printf("开始为接口 %s 配置DHCP自动获取IP", name)
 
 		// 设置DHCP自动获取IP
-		cmdStr := fmt.Sprintf("netsh interface ipv4 set address name=\"%s\" source=dhcp", name)
-		log.Printf("执行命令: %s", cmdStr)
+		log.Printf("为接口 %s 设置DHCP自动获取IP", name)
 
-		cmd := exec.Command("netsh", "interface", "ipv4", "set", "address",
-			fmt.Sprintf(`name=\"%s\"`, name),
+		cmd := exec.Command("netsh",
+			"interface",
+			"ipv4",
+			"set",
+			"address",
+			fmt.Sprintf("name=%s", name), // 直接传递接口名称，无需引号
 			"source=dhcp")
 
 		output, err := cmd.CombinedOutput()
@@ -474,7 +477,7 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 
 		// 设置DNS
 		if config.DNSAuto {
-			cmdStr = fmt.Sprintf("netsh interface ipv4 set dnsservers name=\"%s\" source=dhcp", name)
+			cmdStr := fmt.Sprintf("netsh interface ipv4 set dnsservers name=\"%s\" source=dhcp", name)
 			log.Printf("执行命令: %s", cmdStr)
 
 			cmd = exec.Command("netsh", "interface", "ipv4", "set", "dnsservers",
@@ -488,6 +491,7 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 			}
 			log.Printf("成功设置DNS自动获取")
 		} else if len(config.DNS) > 0 {
+			var cmdStr string
 			log.Printf("开始设置指定DNS服务器: %v", config.DNS)
 			for i, dns := range config.DNS {
 				var cmd *exec.Cmd
@@ -525,31 +529,34 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 			name, config.IP, config.Mask, config.Gateway)
 		log.Printf("执行命令: %s", cmdStr)
 
-		// 处理包含空格的接口名称
-		interfaceName := fmt.Sprintf(`"%s"`, name)
+		// 验证接口是否存在
+		if _, err := net.InterfaceByName(name); err != nil {
+			return fmt.Errorf("接口 %s 不存在: %v", name, err)
+		}
+
+		// 构造netsh命令参数
 		args := []string{
-			"interface", "ipv4", "set", "address",
-			"name=" + interfaceName,
+			"interface",
+			"ipv4",
+			"set",
+			"address",
+			fmt.Sprintf("name=%s", name), // 直接传递接口名称
 			"static",
+			config.IP,
+			config.Mask,
 		}
-
-		// 确保IP和掩码不为空
-		if config.IP == "" || config.Mask == "" {
-			return fmt.Errorf("IP地址和子网掩码不能为空")
-		}
-
-		args = append(args, config.IP, config.Mask)
-
-		// 添加网关（可选）
 		if config.Gateway != "" {
 			args = append(args, config.Gateway)
 		}
 
-		cmd := exec.Command("netsh", args...)
+		// 记录完整命令
+		log.Printf("执行命令: netsh %v", args)
 
+		cmd := exec.Command("netsh", args...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("设置静态IPv4地址失败: %v, 输出: %s", err, string(output))
+			log.Printf("命令执行失败: %v\n完整命令: netsh %v\n输出: %s",
+				err, args, string(output))
 			return fmt.Errorf("设置静态IPv4地址失败: %v, 输出: %s", err, string(output))
 		}
 		log.Printf("成功设置静态IPv4地址")
