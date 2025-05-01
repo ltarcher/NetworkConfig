@@ -1106,14 +1106,14 @@ type WiFiHotspot struct {
 
 func (s *NetworkService) GetWiFiHotspots(interfaceName string) ([]WiFiHotspot, error) {
 	// 验证网卡是否存在且是无线网卡
-	iface, err := s.GetInterface(interfaceName)
-	if err != nil {
-		return nil, fmt.Errorf("网卡不存在: %v", err)
-	}
+	//iface, err := s.GetInterface(interfaceName)
+	//if err != nil {
+	//	return nil, fmt.Errorf("网卡不存在: %v", err)
+	//}
 
-	if iface.Hardware.AdapterType != "wireless" {
-		return nil, fmt.Errorf("网卡%s不是无线网卡", interfaceName)
-	}
+	//if iface.Hardware.AdapterType != "wireless" {
+	//	return nil, fmt.Errorf("网卡%s不是无线网卡", interfaceName)
+	//}
 
 	// 根据操作系统执行不同命令
 	switch runtime.GOOS {
