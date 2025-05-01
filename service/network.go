@@ -400,8 +400,24 @@ func getDriverInfo(name string) (models.Driver, error) {
 
 // ConfigureInterface 配置网卡
 func (s *NetworkService) ConfigureInterface(name string, config models.InterfaceConfig) error {
-	// 添加调试日志
-	log.Printf("接收到接口 %s 的配置请求: %+v", name, config)
+	// 添加详细调试日志
+	log.Printf("接收到接口 %s 的完整配置请求:", name)
+	if config.IPv4Config != nil {
+		log.Printf("IPv4配置: IP=%s, Mask=%s, Gateway=%s, DNS=%v, DHCP=%v, DNSAuto=%v",
+			config.IPv4Config.IP,
+			config.IPv4Config.Mask,
+			config.IPv4Config.Gateway,
+			config.IPv4Config.DNS,
+			config.IPv4Config.DHCP,
+			config.IPv4Config.DNSAuto)
+	}
+	if config.IPv6Config != nil {
+		log.Printf("IPv6配置: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v",
+			config.IPv6Config.IP,
+			config.IPv6Config.PrefixLen,
+			config.IPv6Config.Gateway,
+			config.IPv6Config.DNS)
+	}
 
 	if config.IPv4Config != nil {
 		log.Printf("IPv4配置详情: IP=%s, Mask=%s, Gateway=%s, DNS=%v, DHCP=%v, DNSAuto=%v",
