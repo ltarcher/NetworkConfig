@@ -13,15 +13,21 @@ type Interface struct {
 }
 
 // Hardware 表示网卡硬件信息
+// AdapterType 定义网卡类型常量
+const (
+	AdapterTypeEthernet = "ethernet"
+	AdapterTypeWireless = "wireless"
+)
+
 type Hardware struct {
-	MACAddress    string `json:"mac_address"`
-	Manufacturer  string `json:"manufacturer"`
-	ProductName   string `json:"product_name"`
-	AdapterType   string `json:"adapter_type"`
-	PhysicalMedia string `json:"physical_media"`
-	Speed         string `json:"speed"`
-	BusType       string `json:"bus_type"`
-	PNPDeviceID   string `json:"pnp_device_id"`
+	MACAddress    string `json:"mac_address"`    // MAC地址
+	Manufacturer  string `json:"manufacturer"`   // 制造商
+	ProductName   string `json:"product_name"`   // 产品名称
+	AdapterType   string `json:"adapter_type"`   // 网卡类型: ethernet/wireless
+	PhysicalMedia string `json:"physical_media"` // 物理介质
+	Speed         string `json:"speed"`          // 连接速度
+	BusType       string `json:"bus_type"`       // 总线类型
+	PNPDeviceID   string `json:"pnp_device_id"`  // 即插即用设备ID
 }
 
 // Driver 表示网卡驱动信息
@@ -69,12 +75,12 @@ type ConnectivityResult struct {
 
 // WiFiHotspot 表示可连接的WIFI热点信息
 type WiFiHotspot struct {
-	SSID          string `json:"ssid"`           // 热点名称
-	BSSID         string `json:"bssid"`          // 热点MAC地址
-	SignalLevel   int    `json:"signal_level"`   // 信号强度(百分比)
-	Channel       int    `json:"channel"`        // 信道
-	SecurityType  string `json:"security_type"`  // 加密类型(WPA2等)
-	IsConnected   bool   `json:"is_connected"`   // 是否已连接
-	Frequency     int    `json:"frequency"`      // 频率(MHz)
-	RadioType     string `json:"radio_type"`     // 无线类型(802.11ac等)
+	SSID         string `json:"ssid"`          // 热点名称
+	BSSID        string `json:"bssid"`         // 热点MAC地址
+	SignalLevel  int    `json:"signal_level"`  // 信号强度(百分比)
+	Channel      int    `json:"channel"`       // 信道
+	SecurityType string `json:"security_type"` // 加密类型(WPA2等)
+	IsConnected  bool   `json:"is_connected"`  // 是否已连接
+	Frequency    int    `json:"frequency"`     // 频率(MHz)
+	RadioType    string `json:"radio_type"`    // 无线类型(802.11ac等)
 }

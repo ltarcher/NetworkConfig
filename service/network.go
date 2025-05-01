@@ -297,11 +297,19 @@ func getHardwareInfo(name string) (models.Hardware, error) {
 		speedStr = fmt.Sprintf("%.0f Mbps", speed)
 	}
 
+	// 确定网卡类型
+	adapterType := models.AdapterTypeEthernet // 默认为有线
+	if strings.Contains(strings.ToLower(result.ProductName), "wireless") ||
+		strings.Contains(strings.ToLower(result.ProductName), "wi-fi") ||
+		strings.Contains(strings.ToLower(result.ProductName), "wlan") {
+		adapterType = models.AdapterTypeWireless
+	}
+
 	return models.Hardware{
 		MACAddress:    result.MACAddress,
 		Manufacturer:  result.Manufacturer,
 		ProductName:   result.ProductName,
-		AdapterType:   result.AdapterType,
+		AdapterType:   adapterType,
 		PhysicalMedia: "Ethernet", // 默认值，可以根据实际情况修改
 		Speed:         speedStr,
 		BusType:       result.AdapterType,
