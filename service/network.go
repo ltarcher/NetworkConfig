@@ -417,37 +417,62 @@ func (s *NetworkService) ConfigureInterface(name string, config models.Interface
 
 // configureIPv4 配置IPv4地址
 func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) error {
+	log.Printf("开始配置接口 %s 的IPv4设置: IP=%s, Mask=%s, Gateway=%s, DNS=%v",
+		name, config.IP, config.Mask, config.Gateway, config.DNS)
+
 	// 设置IP地址和子网掩码
+	cmdStr := fmt.Sprintf("netsh interface ipv4 set address name=\"%s\" static %s %s %s",
+		name, config.IP, config.Mask, config.Gateway)
+	log.Printf("执行命令: %s", cmdStr)
+
+	// 处理带空格的接口名，确保正确引用
+	interfaceName := fmt.Sprintf(`name="%s"`, name)
 	cmd := exec.Command("netsh", "interface", "ipv4", "set", "address",
-		fmt.Sprintf(`name="%s"`, name),
+		interfaceName,
 		"static",
 		config.IP,
 		config.Mask,
 		config.Gateway)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("设置IPv4地址失败: %v", err)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("设置IPv4地址失败: %v, 输出: %s", err, string(output))
+		return fmt.Errorf("设置IPv4地址失败: %v, 输出: %s", err, string(output))
 	}
+	log.Printf("成功设置IPv4地址")
 
 	// 设置DNS服务器
 	if len(config.DNS) > 0 {
+		log.Printf("开始设置DNS服务器: %v", config.DNS)
 		for i, dns := range config.DNS {
-			cmd := exec.Command("netsh", "interface", "ipv4", "set", "dns",
-				fmt.Sprintf(`name="%s"`, name),
-				"static",
-				dns)
-			if i > 0 {
+			var cmd *exec.Cmd
+			if i == 0 {
+				cmdStr = fmt.Sprintf("netsh interface ipv4 set dns name=\"%s\" static %s",
+					name, dns)
+				cmd = exec.Command("netsh", "interface", "ipv4", "set", "dns",
+					fmt.Sprintf(`name="%s"`, name),
+					"static",
+					dns)
+			} else {
+				cmdStr = fmt.Sprintf("netsh interface ipv4 add dns name=\"%s\" %s index=%d",
+					name, dns, i+1)
 				cmd = exec.Command("netsh", "interface", "ipv4", "add", "dns",
 					fmt.Sprintf(`name="%s"`, name),
 					dns,
 					fmt.Sprintf("index=%d", i+1))
 			}
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("设置DNS服务器失败: %v", err)
+			log.Printf("执行命令: %s", cmdStr)
+
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("设置DNS服务器失败: %v, 输出: %s", err, string(output))
+				return fmt.Errorf("设置DNS服务器失败: %v, 输出: %s", err, string(output))
 			}
 		}
+		log.Printf("成功设置所有DNS服务器")
 	}
 
+	log.Printf("接口 %s 的IPv4配置完成", name)
 	return nil
 }
 
