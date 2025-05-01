@@ -85,8 +85,8 @@
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="连接热点" v-if="currentInterface.hardware?.adapter_type === 'wireless'">
-              <el-tag :type="currentInterface.wifi?.connected ? 'success' : 'info'">
-                {{ currentInterface.wifi?.connected ? currentInterface.wifi.ssid : '未连接' }}
+              <el-tag :type="currentInterface.connected_ssid ? 'success' : 'info'">
+                {{ currentInterface.connected_ssid || '未连接' }}
               </el-tag>
             </el-descriptions-item>
           </el-descriptions>
@@ -695,9 +695,8 @@ onUnmounted(() => {
   background-color: #f5f7fa;
   border-right: 1px solid #dcdfe6;
   padding: 20px;
-  width: 250px;
+  width: 350px;
   flex-shrink: 0;
-  overflow-y: auto;
 }
 
 .main {
@@ -717,6 +716,25 @@ onUnmounted(() => {
 
 .interface-list {
   height: 100%;
+  overflow-y: auto;
+}
+
+.interface-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.interface-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.interface-list::-webkit-scrollbar-thumb {
+  background: #909399;
+  border-radius: 3px;
+}
+
+.interface-list::-webkit-scrollbar-thumb:hover {
+  background: #606266;
 }
 
 .interface-list :deep(.el-menu) {
