@@ -481,7 +481,7 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 			log.Printf("执行命令: %s", cmdStr)
 
 			cmd = exec.Command("netsh", "interface", "ipv4", "set", "dnsservers",
-				fmt.Sprintf(`name=\"%s\"`, name),
+				fmt.Sprintf("name=%s", name),
 				"source=dhcp")
 
 			output, err = cmd.CombinedOutput()
@@ -499,14 +499,14 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 					cmdStr = fmt.Sprintf("netsh interface ipv4 set dns name=\"%s\" static %s",
 						name, dns)
 					cmd = exec.Command("netsh", "interface", "ipv4", "set", "dns",
-						fmt.Sprintf(`name=\"%s\"`, name),
+						fmt.Sprintf("name=%s", name),
 						"static",
 						dns)
 				} else {
 					cmdStr = fmt.Sprintf("netsh interface ipv4 add dns name=\"%s\" %s index=%d",
 						name, dns, i+1)
 					cmd = exec.Command("netsh", "interface", "ipv4", "add", "dns",
-						fmt.Sprintf(`name=\"%s\"`, name),
+						fmt.Sprintf("name=%s", name),
 						dns,
 						fmt.Sprintf("index=%d", i+1))
 				}
@@ -570,14 +570,14 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 					cmdStr = fmt.Sprintf("netsh interface ipv4 set dns name=\"%s\" static %s",
 						name, dns)
 					cmd = exec.Command("netsh", "interface", "ipv4", "set", "dns",
-						fmt.Sprintf(`name="%s"`, name),
+						fmt.Sprintf("name=%s", name),
 						"static",
 						dns)
 				} else {
 					cmdStr = fmt.Sprintf("netsh interface ipv4 add dns name=\"%s\" %s index=%d",
 						name, dns, i+1)
 					cmd = exec.Command("netsh", "interface", "ipv4", "add", "dns",
-						fmt.Sprintf(`name="%s"`, name),
+						fmt.Sprintf("name=%s", name),
 						dns,
 						fmt.Sprintf("index=%d", i+1))
 				}
