@@ -550,7 +550,21 @@ const connectWifi = async () => {
       password: wifiForm.value.password
     })
     ElMessage.success('连接成功，等待网络就绪...')
-    
+
+    // 立即更新当前接口的connected_ssid
+    currentInterface.value.connected_ssid = selectedWifi.value.ssid
+    // 同时更新store中的接口数据
+    const updatedInterfaces = interfaces.value.map(iface => {
+      if (iface.name === currentInterface.value.name) {
+        return {
+          ...iface,
+          connected_ssid: selectedWifi.value.ssid
+        }
+      }
+      return iface
+    })
+    store.interfaces = updatedInterfaces
+
     // 关闭WiFi连接表单
     closeWifiForm()
     
