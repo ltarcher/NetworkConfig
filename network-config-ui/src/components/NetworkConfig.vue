@@ -716,7 +716,7 @@ onUnmounted(() => {
 
 .interface-list {
   height: 100%;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .interface-list::-webkit-scrollbar {
