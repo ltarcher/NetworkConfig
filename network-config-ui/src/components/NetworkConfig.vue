@@ -142,10 +142,11 @@
                 label-width="80px">
                 <el-form-item label="密码" prop="password" v-if="selectedWifi.security !== 'Open'">
                   <el-input
-                    v-model="wifiForm.password"
+                    v-model.lazy="wifiForm.password"
                     type="password"
                     placeholder="请输入WiFi密码"
-                    show-password>
+                    show-password
+                    @input="handlePasswordInput">
                   </el-input>
                 </el-form-item>
                 
@@ -274,9 +275,35 @@ const wifiForm = ref({
   password: ''
 })
 
+const passwordValidation = ref(false)
+const debounceTimer = ref(null)
+
+const handlePasswordInput = (value) => {
+  // 清除之前的定时器
+  if (debounceTimer.value) {
+    clearTimeout(debounceTimer.value)
+  }
+  
+  // 设置新的定时器，300ms防抖
+  debounceTimer.value = setTimeout(() => {
+    passwordValidation.value = value.length > 0
+  }, 300)
+}
+
 const wifiRules = {
   password: [
-    { required: true, message: '请输入WiFi密码', trigger: 'blur' }
+    { 
+      required: true, 
+      message: '请输入WiFi密码', 
+      trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (!value || value.trim() === '') {
+          callback(new Error('请输入WiFi密码'))
+        } else {
+          callback()
+        }
+      }
+    }
   ]
 }
 
