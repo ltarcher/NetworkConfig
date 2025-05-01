@@ -95,16 +95,25 @@ func (h *NetworkHandler) ConfigureIPv4(c *gin.Context) {
 // ConfigureIPv6 配置IPv6
 func (h *NetworkHandler) ConfigureIPv6(c *gin.Context) {
 	name := c.Param("name")
-	var config models.IPv6Config
-	if err := c.ShouldBindJSON(&config); err != nil {
+	var request struct {
+		IPv6Config *models.IPv6Config `json:"ipv6_config"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "无效的请求数据: " + err.Error(),
 		})
 		return
 	}
 
+	if request.IPv6Config == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "缺少ipv6_config参数",
+		})
+		return
+	}
+
 	err := h.networkService.ConfigureInterface(name, models.InterfaceConfig{
-		IPv6Config: &config,
+		IPv6Config: request.IPv6Config,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
