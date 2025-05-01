@@ -142,7 +142,7 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 		ifaceInfo.Hardware = models.Hardware{
 			MACAddress: iface.HardwareAddr.String(),
 		}
-		return ifaceInfo, nil
+		return ifaceInfo, fmt.Errorf("获取硬件信息失败: %v", err)
 	} else {
 		ifaceInfo.Hardware = hardware
 		log.Printf("接口 %s 硬件信息: %+v", name, hardware)
