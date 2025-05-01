@@ -1178,30 +1178,70 @@ func safeSubstring(s string, length int) string {
 }
 
 func (s *NetworkService) scanWiFiLinux(interfaceName string) ([]WiFiHotspot, error) {
-	cmd := exec.Command("nmcli", "-t", "-f",
-		"SSID,SIGNAL,SECURITY,BSSID,CHAN",
+	log.Printf("开始使用nmcli扫描接口 %s 的WiFi热点...", interfaceName)
+
+	args := []string{
+		"-t", "-f", "SSID,SIGNAL,SECURITY,BSSID,CHAN",
 		"device", "wifi", "list",
-		fmt.Sprintf("ifname=%s", interfaceName))
+		fmt.Sprintf("ifname=%s", interfaceName),
+	}
+	cmd := exec.Command("nmcli", args...)
+	log.Printf("执行命令: nmcli %v", args)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// 如果nmcli不可用，尝试使用iwlist
+		log.Printf("nmcli扫描失败: %v，将尝试使用iwlist", err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Printf("nmcli错误输出: %s", string(exitErr.Stderr))
+		}
 		return s.scanWiFiLinuxIwlist(interfaceName)
 	}
 
-	// 解析nmcli命令输出
-	return parseNmcliOutput(string(out))
+	rawOutput := string(out)
+	log.Printf("nmcli扫描原始输出(前100字符): %q...", safeSubstring(rawOutput, 100))
+	if len(rawOutput) > 1000 {
+		log.Printf("完整输出已记录到调试日志")
+	}
+
+	hotspots, err := parseNmcliOutput(rawOutput)
+	if err != nil {
+		log.Printf("解析nmcli输出失败: %v", err)
+		return nil, fmt.Errorf("解析nmcli输出失败: %v", err)
+	}
+
+	log.Printf("nmcli扫描完成，发现 %d 个热点", len(hotspots))
+	return hotspots, nil
 }
 
 func (s *NetworkService) scanWiFiLinuxIwlist(interfaceName string) ([]WiFiHotspot, error) {
+	log.Printf("开始使用iwlist扫描接口 %s 的WiFi热点...", interfaceName)
+
 	cmd := exec.Command("iwlist", interfaceName, "scan")
+	log.Printf("执行命令: iwlist %s scan", interfaceName)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Printf("iwlist扫描失败: %v", err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Printf("iwlist错误输出: %s", string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("扫描WiFi失败: %v", err)
 	}
 
-	// 解析iwlist命令输出
-	return parseIwlistOutput(string(out))
+	rawOutput := string(out)
+	log.Printf("iwlist扫描原始输出(前100字符): %q...", safeSubstring(rawOutput, 100))
+	if len(rawOutput) > 1000 {
+		log.Printf("完整输出已记录到调试日志")
+	}
+
+	hotspots, err := parseIwlistOutput(rawOutput)
+	if err != nil {
+		log.Printf("解析iwlist输出失败: %v", err)
+		return nil, fmt.Errorf("解析iwlist输出失败: %v", err)
+	}
+
+	log.Printf("iwlist扫描完成，发现 %d 个热点", len(hotspots))
+	return hotspots, nil
 }
 
 // 解析netsh命令输出 (Windows)
@@ -1317,16 +1357,180 @@ func parseNetshOutput(output string) ([]WiFiHotspot, error) {
 
 // 解析nmcli命令输出 (Linux)
 func parseNmcliOutput(output string) ([]WiFiHotspot, error) {
+	log.Printf("开始解析nmcli输出...")
+	startTime := time.Now()
+	defer func() {
+		log.Printf("nmcli输出解析完成，耗时: %v", time.Since(startTime))
+	}()
+
 	var hotspots []WiFiHotspot
-	// 实现解析逻辑...
+	var parseErrors int
+
+	lines := strings.Split(output, "\n")
+	log.Printf("需要解析 %d 行nmcli输出", len(lines))
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// nmcli -t 输出格式: SSID:SIGNAL:SECURITY:BSSID:CHAN
+		fields := strings.Split(line, ":")
+		if len(fields) < 5 {
+			log.Printf("警告: 行 %d 字段不足(需要5个，得到%d个): %q",
+				i+1, len(fields), line)
+			parseErrors++
+			continue
+		}
+
+		hotspot := WiFiHotspot{
+			SSID:     fields[0],
+			Security: fields[2],
+			BSSID:    fields[3],
+		}
+
+		// 解析信号强度
+		if signal, err := strconv.Atoi(fields[1]); err == nil {
+			hotspot.SignalStrength = signal
+		} else {
+			log.Printf("警告: 行 %d 无效的信号强度值: %q", i+1, fields[1])
+			parseErrors++
+		}
+
+		// 解析信道
+		if channel, err := strconv.Atoi(fields[4]); err == nil {
+			hotspot.Channel = channel
+		} else {
+			log.Printf("警告: 行 %d 无效的信道值: %q", i+1, fields[4])
+			parseErrors++
+		}
+
+		log.Printf("解析热点: %s (信号: %d%%, 加密: %s)",
+			hotspot.SSID, hotspot.SignalStrength, hotspot.Security)
+		hotspots = append(hotspots, hotspot)
+	}
+
+	log.Printf("解析完成: 共 %d 个热点，解析错误 %d 处",
+		len(hotspots), parseErrors)
 	return hotspots, nil
 }
 
 // 解析iwlist命令输出 (Linux)
 func parseIwlistOutput(output string) ([]WiFiHotspot, error) {
+	log.Printf("开始解析iwlist输出...")
+	startTime := time.Now()
+	defer func() {
+		log.Printf("iwlist输出解析完成，耗时: %v", time.Since(startTime))
+	}()
+
 	var hotspots []WiFiHotspot
-	// 实现解析逻辑...
+	var currentHotspot *WiFiHotspot
+	var parseErrors int
+	var cellCount int
+
+	lines := strings.Split(output, "\n")
+	log.Printf("需要解析 %d 行iwlist输出", len(lines))
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// 检测新Cell开始
+		if strings.HasPrefix(line, "Cell") {
+			cellCount++
+			if currentHotspot != nil {
+				hotspots = append(hotspots, *currentHotspot)
+				log.Printf("完成解析热点: %s (信号: %d%%, 加密: %s)",
+					currentHotspot.SSID, currentHotspot.SignalStrength, currentHotspot.Security)
+			}
+			currentHotspot = &WiFiHotspot{}
+			continue
+		}
+
+		if currentHotspot == nil {
+			continue
+		}
+
+		// 解析ESSID
+		if strings.HasPrefix(line, "ESSID:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.SSID = strings.Trim(strings.TrimSpace(parts[1]), `"`)
+				log.Printf("发现新热点: %s (Cell %d)", currentHotspot.SSID, cellCount)
+			}
+		}
+
+		// 解析信号质量
+		if strings.Contains(line, "Quality=") && strings.Contains(line, "Signal level=") {
+			// 示例: Quality=70/70  Signal level=-40 dBm
+			if parts := strings.Split(line, "Signal level="); len(parts) > 1 {
+				signalParts := strings.Split(parts[1], " ")
+				if len(signalParts) > 0 {
+					// 将dBm转换为百分比 (近似)
+					if dbm, err := strconv.Atoi(strings.TrimSpace(signalParts[0])); err == nil {
+						// -30dBm ~ 100%, -90dBm ~ 0%
+						currentHotspot.SignalStrength = clamp((dbm+90)*100/60, 0, 100)
+					}
+				}
+			}
+		}
+
+		// 解析加密类型
+		if strings.Contains(line, "Encryption key:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				if strings.TrimSpace(parts[1]) == "on" {
+					// 默认加密类型
+					currentHotspot.Security = "WPA2"
+				} else {
+					currentHotspot.Security = "Open"
+				}
+			}
+		}
+
+		// 解析MAC地址
+		if strings.HasPrefix(line, "Address:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.BSSID = strings.TrimSpace(parts[1])
+			}
+		}
+
+		// 解析信道
+		if strings.HasPrefix(line, "Channel:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				if channel, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					currentHotspot.Channel = channel
+				}
+			}
+		}
+	}
+
+	// 添加最后一个热点
+	if currentHotspot != nil {
+		hotspots = append(hotspots, *currentHotspot)
+		log.Printf("完成解析热点: %s (信号: %d%%, 加密: %s)",
+			currentHotspot.SSID, currentHotspot.SignalStrength, currentHotspot.Security)
+	}
+
+	log.Printf("解析完成: 共 %d 个Cell，有效热点 %d 个，解析错误 %d 处",
+		cellCount, len(hotspots), parseErrors)
 	return hotspots, nil
+}
+
+// clamp 确保值在[min,max]范围内
+func clamp(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func (s *NetworkService) ConnectWiFi(interfaceName, ssid, password string) error {
