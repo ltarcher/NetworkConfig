@@ -585,7 +585,7 @@ func getIPv6Gateway(name string) string {
 }
 
 func getDNSServers(name string) []string {
-	cmd := exec.Command("netsh", "interface", "ipv4", "show", "dnsservers", "name="+name)
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "dnsservers", fmt.Sprintf("name=\"%s\"", name))
 	output, err := cmd.Output()
 	if err != nil {
 		log.Printf("获取接口 %s 的DNS服务器失败: %v", name, err)
@@ -594,16 +594,45 @@ func getDNSServers(name string) []string {
 
 	servers := []string{}
 	lines := strings.Split(string(output), "\n")
+	inDnsSection := false
+
 	for _, line := range lines {
-		if strings.Contains(line, "DNS 服务器") || strings.Contains(line, "DNS Servers") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				server := strings.TrimSpace(parts[1])
-				if net.ParseIP(server) != nil {
-					servers = append(servers, server)
+		line = strings.TrimSpace(line)
+
+		// 检查是否进入DNS服务器部分
+		if strings.Contains(line, "静态配置的 DNS 服务器") ||
+			strings.Contains(line, "Statically Configured DNS Servers") {
+			inDnsSection = true
+			continue
+		}
+
+		// 只在DNS服务器部分处理
+		if inDnsSection {
+			// 跳过说明行和空行
+			if line == "" ||
+				strings.Contains(line, "用哪个前缀注册") ||
+				strings.Contains(line, "Register with which suffix") {
+				continue
+			}
+
+			// 提取IP地址
+			if ip := net.ParseIP(line); ip != nil {
+				servers = append(servers, ip.String())
+			} else {
+				// 处理可能的多行格式
+				parts := strings.Fields(line)
+				for _, part := range parts {
+					if ip := net.ParseIP(part); ip != nil {
+						servers = append(servers, ip.String())
+					}
 				}
 			}
 		}
+	}
+
+	// 如果没有找到DNS服务器，尝试备用方法
+	if len(servers) == 0 {
+		servers = getDNSServersAlternative(name)
 	}
 
 	if len(servers) == 0 {
@@ -612,8 +641,78 @@ func getDNSServers(name string) []string {
 	return servers
 }
 
+// 备用DNS获取方法
+func getDNSServersAlternative(name string) []string {
+	// 方法1: 使用ipconfig /all
+	cmd := exec.Command("ipconfig", "/all")
+	output, err := cmd.Output()
+	if err == nil {
+		lines := strings.Split(string(output), "\n")
+		inInterfaceSection := false
+		servers := []string{}
+
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+
+			// 检查是否进入目标接口部分
+			if strings.Contains(line, name) {
+				inInterfaceSection = true
+				continue
+			}
+
+			if inInterfaceSection {
+				// 检查DNS服务器行
+				if strings.Contains(line, "DNS Servers") || strings.Contains(line, "DNS 服务器") {
+					parts := strings.Split(line, ":")
+					if len(parts) > 1 {
+						ip := strings.TrimSpace(parts[1])
+						if net.ParseIP(ip) != nil {
+							servers = append(servers, ip)
+						}
+					}
+				}
+
+				// 检查是否离开接口部分
+				if strings.Contains(line, "----------") {
+					break
+				}
+			}
+		}
+
+		if len(servers) > 0 {
+			return servers
+		}
+	}
+
+	// 方法2: 使用Get-DnsClientServerAddress PowerShell命令
+	psCmd := fmt.Sprintf(`
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+        (Get-DnsClientServerAddress -InterfaceAlias "%s" -AddressFamily IPv4).ServerAddresses
+    `, name)
+
+	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
+	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+	output, err = cmd.Output()
+	if err == nil {
+		// 解析输出，每行一个IP地址
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		servers := []string{}
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if ip := net.ParseIP(line); ip != nil {
+				servers = append(servers, ip.String())
+			}
+		}
+		return servers
+	}
+
+	return []string{}
+}
+
 func getIPv6DNSServers(name string) []string {
-	cmd := exec.Command("netsh", "interface", "ipv6", "show", "dnsservers", "name="+name)
+	cmd := exec.Command("netsh", "interface", "ipv6", "show", "dnsservers", fmt.Sprintf("name=\"%s\"", name))
 	output, err := cmd.Output()
 	if err != nil {
 		log.Printf("获取接口 %s 的IPv6 DNS服务器失败: %v", name, err)
@@ -622,22 +721,121 @@ func getIPv6DNSServers(name string) []string {
 
 	servers := []string{}
 	lines := strings.Split(string(output), "\n")
+	inDnsSection := false
+
 	for _, line := range lines {
-		if strings.Contains(line, "DNS 服务器") || strings.Contains(line, "DNS Servers") {
-			parts := strings.Split(line, ":")
-			if len(parts) > 1 {
-				server := strings.TrimSpace(parts[1])
-				if net.ParseIP(server) != nil {
-					servers = append(servers, server)
+		line = strings.TrimSpace(line)
+
+		// 检查是否进入DNS服务器部分
+		if strings.Contains(line, "静态配置的 DNS 服务器") ||
+			strings.Contains(line, "Statically Configured DNS Servers") {
+			inDnsSection = true
+			continue
+		}
+
+		// 只在DNS服务器部分处理
+		if inDnsSection {
+			// 跳过说明行和空行
+			if line == "" ||
+				strings.Contains(line, "用哪个前缀注册") ||
+				strings.Contains(line, "Register with which suffix") {
+				continue
+			}
+
+			// 提取IP地址
+			if ip := net.ParseIP(line); ip != nil {
+				servers = append(servers, ip.String())
+			} else {
+				// 处理可能的多行格式
+				parts := strings.Fields(line)
+				for _, part := range parts {
+					if ip := net.ParseIP(part); ip != nil {
+						servers = append(servers, ip.String())
+					}
 				}
 			}
 		}
+	}
+
+	// 如果没有找到DNS服务器，尝试备用方法
+	if len(servers) == 0 {
+		servers = getIPv6DNSServersAlternative(name)
 	}
 
 	if len(servers) == 0 {
 		return []string{"none"}
 	}
 	return servers
+}
+
+// 备用IPv6 DNS获取方法
+func getIPv6DNSServersAlternative(name string) []string {
+	// 方法1: 使用ipconfig /all
+	cmd := exec.Command("ipconfig", "/all")
+	output, err := cmd.Output()
+	if err == nil {
+		lines := strings.Split(string(output), "\n")
+		inInterfaceSection := false
+		servers := []string{}
+
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+
+			// 检查是否进入目标接口部分
+			if strings.Contains(line, name) {
+				inInterfaceSection = true
+				continue
+			}
+
+			if inInterfaceSection {
+				// 检查IPv6 DNS服务器行
+				if strings.Contains(line, "DNS Servers") || strings.Contains(line, "DNS 服务器") {
+					parts := strings.Split(line, ":")
+					if len(parts) > 1 {
+						ip := strings.TrimSpace(parts[1])
+						if net.ParseIP(ip) != nil && strings.Contains(ip, ":") { // 确保是IPv6地址
+							servers = append(servers, ip)
+						}
+					}
+				}
+
+				// 检查是否离开接口部分
+				if strings.Contains(line, "----------") {
+					break
+				}
+			}
+		}
+
+		if len(servers) > 0 {
+			return servers
+		}
+	}
+
+	// 方法2: 使用Get-DnsClientServerAddress PowerShell命令
+	psCmd := fmt.Sprintf(`
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+        (Get-DnsClientServerAddress -InterfaceAlias "%s" -AddressFamily IPv6).ServerAddresses
+    `, name)
+
+	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
+	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+	output, err = cmd.Output()
+	if err == nil {
+		// 解析输出，每行一个IP地址
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		servers := []string{}
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if ip := net.ParseIP(line); ip != nil && ip.To4() == nil { // 确保是IPv6地址
+				servers = append(servers, ip.String())
+			}
+		}
+		return servers
+	}
+
+	return []string{}
 }
 
 func parseGateway(output string) string {
