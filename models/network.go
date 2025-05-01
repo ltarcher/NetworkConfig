@@ -54,6 +54,6 @@ type IPv6Config struct {
 
 // InterfaceConfig 表示网卡配置请求
 type InterfaceConfig struct {
-	IPv4Config *IPv4Config `json:"ipv4_config,omitempty"`
-	IPv6Config *IPv6Config `json:"ipv6_config,omitempty"`
+	IPv4Config *IPv4Config `json:"ipv4_config"`
+	IPv6Config *IPv6Config `json:"ipv6_config"`
 }

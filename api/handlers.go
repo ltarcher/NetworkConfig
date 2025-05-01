@@ -61,16 +61,26 @@ func (h *NetworkHandler) GetInterface(c *gin.Context) {
 // ConfigureIPv4 配置IPv4
 func (h *NetworkHandler) ConfigureIPv4(c *gin.Context) {
 	name := c.Param("name")
-	var config models.IPv4Config
-	if err := c.ShouldBindJSON(&config); err != nil {
+	var request struct {
+		IPv4Config *models.IPv4Config `json:"ipv4_config"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "无效的请求数据: " + err.Error(),
 		})
 		return
 	}
 
+	if request.IPv4Config == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "缺少ipv4_config参数",
+		})
+		return
+	}
+
 	err := h.networkService.ConfigureInterface(name, models.InterfaceConfig{
-		IPv4Config: &config,
+		IPv4Config: request.IPv4Config,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

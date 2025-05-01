@@ -60,6 +60,8 @@ export const networkApi = {
   // 更新IPv4配置
   updateIPv4Config: async (name, config) => {
     const encodedName = encodeURIComponent(name)
+    // 添加请求日志
+    console.log(`Sending to /interfaces/${encodedName}/ipv4:`, config)
     const response = await api.put(`/interfaces/${encodedName}/ipv4`, config)
     return response.data
   }
