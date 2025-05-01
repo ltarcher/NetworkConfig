@@ -78,6 +78,11 @@
                 {{ currentInterface.hardware?.adapter_type === 'wireless' ? '无线网卡' : '有线网卡' }}
               </el-tag>
             </el-descriptions-item>
+            <el-descriptions-item label="连接热点" v-if="currentInterface.hardware?.adapter_type === 'wireless'">
+              <el-tag :type="currentInterface.wifi?.connected ? 'success' : 'info'">
+                {{ currentInterface.wifi?.connected ? currentInterface.wifi.ssid : '未连接' }}
+              </el-tag>
+            </el-descriptions-item>
           </el-descriptions>
 
           <!-- 无线热点管理区域 -->
