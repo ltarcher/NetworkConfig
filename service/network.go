@@ -149,16 +149,16 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 		}
 	}
 
-	driver, err := getDriverInfo(name)
-	if err != nil {
-		log.Printf("获取接口 %s 驱动信息失败: %v", name, err)
-		ifaceInfo.Driver = models.Driver{
-			Name: iface.Name,
-		}
-	} else {
-		ifaceInfo.Driver = driver
-		log.Printf("接口 %s 驱动信息: %+v", name, driver)
-	}
+	//driver, err := getDriverInfo(name)
+	//if err != nil {
+	//	log.Printf("获取接口 %s 驱动信息失败: %v", name, err)
+	//	ifaceInfo.Driver = models.Driver{
+	//		Name: iface.Name,
+	//	}
+	//} else {
+	//	ifaceInfo.Driver = driver
+	//	log.Printf("接口 %s 驱动信息: %+v", name, driver)
+	//}
 
 	// 获取IPv4和IPv6配置
 	for i, addr := range addrs {
