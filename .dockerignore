@@ -1,0 +1,38 @@
+# 依赖目录
+node_modules/
+
+# 构建输出
+dist/
+build/
+
+# 本地环境文件
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 日志文件
+*.log
+logs/
+
+# 版本控制
+.git/
+.gitignore
+
+# 编辑器配置
+.vscode/
+.idea/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 测试相关
+coverage/
+.nyc_output/
+
+# 调试文件
+*.pid
+*.seed
+*.pid.lock

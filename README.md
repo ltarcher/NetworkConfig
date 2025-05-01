@@ -62,6 +62,49 @@ go build -o NetworkConfig.exe
 
 服务默认监听 http://localhost:8080
 
+## Docker 部署
+
+### 前提条件
+- 已安装 Docker 和 Docker Compose
+- 确保 Docker 服务正在运行
+
+### 使用 Docker 运行
+
+1. 构建镜像：
+```bash
+docker build -t network-config .
+```
+
+2. 运行容器：
+```bash
+docker run -d --name network-config -p 8080:8080 --restart unless-stopped network-config
+```
+
+3. 访问服务：
+打开浏览器访问 http://localhost:8080
+
+### 使用 Docker Compose 运行
+
+1. 启动服务：
+```bash
+docker-compose up -d
+```
+
+2. 停止服务：
+```bash
+docker-compose down
+```
+
+3. 查看日志：
+```bash
+docker-compose logs -f
+```
+
+### 注意事项
+- 容器内需要管理员权限，运行时添加 `--privileged` 参数
+- 默认监听端口可在 docker-compose.yml 中修改
+- Windows 容器需要使用 `mcr.microsoft.com/windows/nanoserver` 基础镜像
+
 ## API接口
 
 ### 获取网卡列表
