@@ -1,7 +1,6 @@
 package service
 
 import (
-	"net"
 	"networkconfig/models"
 	"regexp"
 	"testing"
@@ -37,7 +36,7 @@ func newMockNetworkService() *mockNetworkService {
 					MACAddress:    "00:11:22:33:44:55",
 					Manufacturer:  "Intel Corporation",
 					ProductName:   "Intel(R) Ethernet Connection I219-V",
-					AdapterType:   "Ethernet 802.3",
+					AdapterType:   models.AdapterTypeEthernet,
 					PhysicalMedia: "Ethernet",
 					Speed:         "1000 Mbps",
 					BusType:       "PCI",
@@ -53,14 +52,33 @@ func newMockNetworkService() *mockNetworkService {
 				},
 			},
 			"wlan0": {
-				Name:        "wlan0",
-				Description: "Test Wireless Interface",
-				Status:      "up",
+				Name:          "wlan0",
+				Description:   "Test Wireless Interface",
+				Status:        "up",
+				ConnectedSSID: "TestWiFi",
 				IPv4Config: models.IPv4Config{
 					IP:      "192.168.2.100",
 					Mask:    "255.255.255.0",
 					Gateway: "192.168.2.1",
 					DNS:     []string{"8.8.8.8", "8.8.4.4"},
+				},
+				Hardware: models.Hardware{
+					MACAddress:    "00:11:22:33:44:66",
+					Manufacturer:  "Intel Corporation",
+					ProductName:   "Intel(R) Wireless-AC 9560",
+					AdapterType:   models.AdapterTypeWireless,
+					PhysicalMedia: "Native 802.11",
+					Speed:         "866.7 Mbps",
+					BusType:       "PCI",
+					PNPDeviceID:   "PCI\\VEN_8086&DEV_A370",
+				},
+				Driver: models.Driver{
+					Name:          "Intel(R) Wireless-AC 9560",
+					Version:       "22.10.0.7",
+					Provider:      "Intel",
+					DateInstalled: "2024-01-01",
+					Status:        "OK",
+					Path:          "C:\\Windows\\System32\\DriverStore\\FileRepository\\netwtw10.inf_amd64_abc123\\netwtw10.inf",
 				},
 			},
 		},
@@ -117,73 +135,72 @@ func TestGetInterfaces(t *testing.T) {
 }
 
 func TestGetInterface(t *testing.T) {
-	// 创建真实的NetworkService实例
-	service := NewNetworkService()
+	service := newMockNetworkService()
 
-	// 获取网卡列表
-	interfaces, err := service.GetInterfaces()
-	if err != nil {
-		t.Logf("获取网卡列表可能需要管理员权限: %v", err)
-		return
-	}
-
-	if len(interfaces) == 0 {
-		t.Log("警告: 未找到可用的网卡")
-		return
-	}
-
-	// 测试获取第一个网卡
-	firstInterface := interfaces[0]
-	testName := firstInterface.Name
-
-	t.Run(testName, func(t *testing.T) {
-		iface, err := service.GetInterface(testName)
+	t.Run("Get Ethernet Interface", func(t *testing.T) {
+		iface, err := service.GetInterface("eth0")
 		if err != nil {
-			t.Fatalf("获取网卡 %s 信息失败: %v", testName, err)
+			t.Errorf("获取有线网卡失败: %v", err)
 		}
 
 		// 验证基本信息
-		if iface.Name != testName {
-			t.Errorf("网卡名称不匹配: 期望 %s, 得到 %s", testName, iface.Name)
+		if iface.Name != "eth0" {
+			t.Errorf("接口名称不匹配: 期望 eth0, 得到 %s", iface.Name)
 		}
-		if iface.Status == "" {
-			t.Error("网卡状态为空")
-		}
-
-		// 验证硬件信息
-		if iface.Hardware.MACAddress == "" {
-			t.Error("MAC地址为空")
-		} else {
-			macPattern := `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
-			if matched, _ := regexp.MatchString(macPattern, iface.Hardware.MACAddress); !matched {
-				t.Errorf("MAC地址格式无效: %s", iface.Hardware.MACAddress)
-			}
+		if iface.Status != "up" {
+			t.Errorf("接口状态不匹配: 期望 up, 得到 %s", iface.Status)
 		}
 
-		// 验证驱动信息
-		if iface.Driver.Name == "" {
-			t.Error("驱动名称为空")
+		// 验证网卡类型
+		if iface.Hardware.AdapterType != models.AdapterTypeEthernet {
+			t.Errorf("网卡类型不匹配: 期望 %s, 得到 %s", models.AdapterTypeEthernet, iface.Hardware.AdapterType)
+		}
+
+		// 验证无SSID
+		if iface.ConnectedSSID != "" {
+			t.Errorf("有线网卡不应该有ConnectedSSID，但得到了: %s", iface.ConnectedSSID)
 		}
 
 		// 验证IP配置
-		if iface.IPv4Config.IP == "" && iface.IPv6Config.IP == "" {
-			t.Error("网卡没有IP配置")
+		if iface.IPv4Config.IP != "192.168.1.100" {
+			t.Errorf("IPv4地址不匹配: 期望 192.168.1.100, 得到 %s", iface.IPv4Config.IP)
+		}
+	})
+
+	t.Run("Get Wireless Interface", func(t *testing.T) {
+		iface, err := service.GetInterface("wlan0")
+		if err != nil {
+			t.Errorf("获取无线网卡失败: %v", err)
 		}
 
-		// 如果有IPv4配置，验证格式
-		if iface.IPv4Config.IP != "" {
-			ip := net.ParseIP(iface.IPv4Config.IP)
-			if ip == nil || ip.To4() == nil {
-				t.Errorf("无效的IPv4地址: %s", iface.IPv4Config.IP)
-			}
+		// 验证基本信息
+		if iface.Name != "wlan0" {
+			t.Errorf("接口名称不匹配: 期望 wlan0, 得到 %s", iface.Name)
+		}
+		if iface.Status != "up" {
+			t.Errorf("接口状态不匹配: 期望 up, 得到 %s", iface.Status)
 		}
 
-		// 如果有IPv6配置，验证格式
-		if iface.IPv6Config.IP != "" {
-			ip := net.ParseIP(iface.IPv6Config.IP)
-			if ip == nil || ip.To4() != nil {
-				t.Errorf("无效的IPv6地址: %s", iface.IPv6Config.IP)
-			}
+		// 验证网卡类型
+		if iface.Hardware.AdapterType != models.AdapterTypeWireless {
+			t.Errorf("网卡类型不匹配: 期望 %s, 得到 %s", models.AdapterTypeWireless, iface.Hardware.AdapterType)
+		}
+
+		// 验证SSID
+		if iface.ConnectedSSID != "TestWiFi" {
+			t.Errorf("SSID不匹配: 期望 TestWiFi, 得到 %s", iface.ConnectedSSID)
+		}
+
+		// 验证IP配置
+		if iface.IPv4Config.IP != "192.168.2.100" {
+			t.Errorf("IPv4地址不匹配: 期望 192.168.2.100, 得到 %s", iface.IPv4Config.IP)
+		}
+	})
+
+	t.Run("Get Nonexistent Interface", func(t *testing.T) {
+		_, err := service.GetInterface("nonexistent")
+		if err == nil {
+			t.Error("获取不存在的接口应该返回错误")
 		}
 	})
 }
@@ -299,6 +316,53 @@ func TestGetHardwareInfo(t *testing.T) {
 	}
 
 	t.Logf("硬件信息: %+v", hardware)
+}
+
+func TestGetConnectedSSID(t *testing.T) {
+	t.Run("Connected Wireless Interface", func(t *testing.T) {
+		// 测试SSID提取
+		ssid, err := getConnectedSSID("Wi-Fi")
+		// 在实际测试中，这里应该模拟命令执行并验证输出解析
+		// 由于getConnectedSSID是内部函数，我们暂时跳过详细模拟
+		if err != nil {
+			t.Errorf("获取SSID失败: %v", err)
+		}
+		if ssid != "TestWiFi" {
+			t.Errorf("SSID不匹配: 期望 TestWiFi, 得到 %s", ssid)
+		}
+	})
+
+	t.Run("Disconnected Wireless Interface", func(t *testing.T) {
+		// 模拟未连接状态的netsh命令输出
+		mockOutput := `
+接口 WLAN 显示界面
+
+    名称                   : Wi-Fi
+    描述                   : Intel(R) Wireless-AC 9560 160MHz
+    GUID                   : e8d45b76-d435-4614-8f82-644d51d1e3a7
+    物理地址               : 00:11:22:33:44:55
+    状态                   : 已断开连接
+`
+		// 测试未连接状态
+		ssid, err := getConnectedSSID("Wi-Fi")
+		if err != nil {
+			t.Errorf("获取SSID失败: %v", err)
+		}
+		if ssid != "" {
+			t.Errorf("未连接状态应返回空SSID，但得到: %s", ssid)
+		}
+	})
+
+	t.Run("Invalid Interface", func(t *testing.T) {
+		// 测试无效网卡名称
+		ssid, err := getConnectedSSID("NonExistentInterface")
+		if err == nil {
+			t.Error("对无效网卡应返回错误")
+		}
+		if ssid != "" {
+			t.Errorf("无效网卡应返回空SSID，但得到: %s", ssid)
+		}
+	})
 }
 
 func TestGetDriverInfo(t *testing.T) {

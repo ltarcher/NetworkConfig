@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -15,8 +16,15 @@ import (
 	"time"
 )
 
+// 定义服务错误
+var (
+	ErrInterfaceNotFound = errors.New("interface not found")
+)
+
 // NetworkService 处理网络配置相关的操作
-type NetworkService struct{}
+type NetworkService struct {
+	// 可以添加需要的字段
+}
 
 // NewNetworkService 创建新的NetworkService实例
 func NewNetworkService() *NetworkService {
@@ -636,7 +644,7 @@ func (s *NetworkService) configureIPv6(name string, config models.IPv6Config) er
 	cmd := exec.Command("netsh", "interface", "ipv6", "set", "address",
 		fmt.Sprintf("interface=%s", name),
 		fmt.Sprintf("address=%s", config.IP),
-		fmt.Sprintf("store=persistent"))
+		"store=persistent")
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("设置IPv6地址失败: %v", err)
@@ -1090,21 +1098,6 @@ func isDHCPEnabled(name string) (bool, error) {
 	return false, fmt.Errorf("无法从输出中确定DHCP状态: %s", string(output))
 }
 
-func parseDNSServers(output string) []string {
-	// 简单实现，实际使用时需要更复杂的解析逻辑
-	var servers []string
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "DNS servers") {
-			fields := strings.Fields(line)
-			if len(fields) > 2 {
-				servers = append(servers, fields[2])
-			}
-		}
-	}
-	return servers
-}
-
 // CheckConnectivity 检查网络连通性
 // WiFiHotspot 表示WiFi热点信息
 type WiFiHotspot struct {
@@ -1322,7 +1315,7 @@ func parseNetshOutput(output string) ([]WiFiHotspot, error) {
 		}
 
 		// 解析BSSID (处理中英文标签)
-		if strings.HasPrefix(line, "BSSID") || strings.HasPrefix(line, "BSSID") {
+		if strings.HasPrefix(line, "BSSID") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) > 1 {
 				currentHotspot.BSSID = strings.TrimSpace(parts[1])
