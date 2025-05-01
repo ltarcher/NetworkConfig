@@ -110,12 +110,11 @@
               <el-table
                 :data="wifiList"
                 style="width: 100%"
-                @row-click="handleWifiSelect"
                 highlight-current-row>
                 <el-table-column
                   prop="ssid"
                   label="热点名称"
-                  width="180">
+                  min-width="180">
                 </el-table-column>
                 <el-table-column
                   prop="signal"
@@ -135,14 +134,30 @@
                   label="加密类型"
                   width="120">
                 </el-table-column>
+                <el-table-column
+                  label="操作"
+                  width="100"
+                  fixed="right">
+                  <template #default="{row}">
+                    <el-button
+                      type="primary"
+                      link
+                      @click="openWifiForm(row)">
+                      连接
+                    </el-button>
+                  </template>
+                </el-table-column>
               </el-table>
             </el-card>
 
             <!-- WiFi连接表单 -->
-            <el-card class="wifi-connect" v-if="selectedWifi">
+            <el-card class="wifi-connect" v-if="selectedWifi && showWifiForm">
               <template #header>
                 <div class="card-header">
                   <span>连接至 {{ selectedWifi.ssid }}</span>
+                  <el-button type="text" @click="closeWifiForm">
+                    <el-icon><Close /></el-icon>
+                  </el-button>
                 </div>
               </template>
               
@@ -171,6 +186,7 @@
                     :loading="connecting">
                     连接
                   </el-button>
+                  <el-button @click="closeWifiForm">取消</el-button>
                 </el-form-item>
               </el-form>
             </el-card>
@@ -283,6 +299,7 @@ import { Connection } from '@element-plus/icons-vue'
 const store = useNetworkStore()
 const wifiList = ref([])
 const selectedWifi = ref(null)
+const showWifiForm = ref(false)
 const wifiLoading = ref(false)
 const connecting = ref(false)
 
@@ -294,6 +311,24 @@ const wifiFormRef = ref(null)
 const wifiForm = ref({
   password: ''
 })
+
+// WiFi表单控制
+const openWifiForm = (row) => {
+  selectedWifi.value = row
+  showWifiForm.value = true
+  wifiForm.value.password = ''
+  nextTick(() => {
+    if (passwordInput.value && row.security !== 'Open') {
+      passwordInput.value.focus()
+    }
+  })
+}
+
+const closeWifiForm = () => {
+  showWifiForm.value = false
+  selectedWifi.value = null
+  wifiForm.value.password = ''
+}
 
 // 重置表单
 const resetWifiForm = () => {
@@ -504,11 +539,6 @@ const calculateSignalRating = (strength) => {
   return 0
 }
 
-const handleWifiSelect = (wifi) => {
-  selectedWifi.value = wifi
-  wifiForm.value.password = ''
-}
-
 const connectWifi = async () => {
   if (!selectedWifi.value) return
   
@@ -520,6 +550,9 @@ const connectWifi = async () => {
       password: wifiForm.value.password
     })
     ElMessage.success('连接成功，等待网络就绪...')
+    
+    // 关闭WiFi连接表单
+    closeWifiForm()
     
     // 等待5秒后刷新网卡状态
     await new Promise(resolve => setTimeout(resolve, 5000))
