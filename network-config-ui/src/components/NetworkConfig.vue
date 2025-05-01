@@ -321,20 +321,27 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     
+    console.log('表单数据:', ipv4Form.value)
+    
     const config = {
       ip: currentInterface.value.dhcp_enabled ? '' : ipv4Form.value.ip,
       mask: currentInterface.value.dhcp_enabled ? '' : ipv4Form.value.mask,
       gateway: ipv4Form.value.gateway,
-      dns: currentInterface.value.dns_auto ? [] : ipv4Form.value.dns.filter(dns => dns.trim() !== '')
+      dns: currentInterface.value.dns_auto ? [] : ipv4Form.value.dns.filter(dns => dns && dns.trim() !== '')
     }
     
-    await networkApi.updateIPv4Config(currentInterface.value.name, {
+    console.log('构造的配置:', config)
+    
+    const requestData = {
       ipv4_config: {
         ...config,
         dhcp: currentInterface.value.dhcp_enabled,
         dnsAuto: currentInterface.value.dns_auto
       }
-    })
+    }
+    
+    console.log('最终请求体:', requestData)
+    await networkApi.updateIPv4Config(currentInterface.value.name, requestData)
     
     ElMessage.success('配置更新成功')
     await refreshInterfaces()

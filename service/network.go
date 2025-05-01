@@ -400,6 +400,10 @@ func getDriverInfo(name string) (models.Driver, error) {
 
 // ConfigureInterface 配置网卡
 func (s *NetworkService) ConfigureInterface(name string, config models.InterfaceConfig) error {
+	// 添加原始请求日志
+	raw, _ := json.Marshal(config)
+	log.Printf("原始请求体JSON: %s", string(raw))
+
 	// 添加详细调试日志
 	log.Printf("接收到接口 %s 的完整配置请求:", name)
 	if config.IPv4Config != nil {
