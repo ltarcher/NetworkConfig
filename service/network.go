@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"networkconfig/models"
 	"os"
 	"os/exec"
@@ -1081,4 +1082,40 @@ func parseDNSServers(output string) []string {
 		}
 	}
 	return servers
+}
+
+// CheckConnectivity 检查网络连通性
+func (s *NetworkService) CheckConnectivity(target string) (models.ConnectivityResult, error) {
+	if target == "" {
+		target = "http://www.baidu.com" // 默认探测百度
+	}
+
+	log.Printf("开始检查网络连通性，目标: %s", target)
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
+	start := time.Now()
+	resp, err := client.Get(target)
+	duration := time.Since(start)
+
+	result := models.ConnectivityResult{
+		Target:     target,
+		DurationMs: duration.Milliseconds(),
+	}
+
+	if err != nil {
+		log.Printf("网络连通性检查失败: %v", err)
+		result.Success = false
+		result.Error = err.Error()
+		return result, nil
+	}
+	defer resp.Body.Close()
+
+	log.Printf("网络连通性检查成功，状态码: %d, 耗时: %dms", resp.StatusCode, duration.Milliseconds())
+
+	result.Success = true
+	result.StatusCode = resp.StatusCode
+	return result, nil
 }

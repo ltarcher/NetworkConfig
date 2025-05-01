@@ -57,3 +57,12 @@ type InterfaceConfig struct {
 	IPv4Config *IPv4Config `json:"ipv4_config"`
 	IPv6Config *IPv6Config `json:"ipv6_config"`
 }
+
+// ConnectivityResult 表示网络连通性探测结果
+type ConnectivityResult struct {
+	Target     string `json:"target"`      // 探测目标地址
+	Success    bool   `json:"success"`     // 是否成功连接
+	StatusCode int    `json:"status_code"` // HTTP状态码
+	DurationMs int64  `json:"duration_ms"` // 响应时间(毫秒)
+	Error      string `json:"error"`       // 错误信息(成功时为"")
+}

@@ -28,6 +28,7 @@ func (h *NetworkHandler) RegisterRoutes(router *gin.Engine) {
 		v1.GET("/interfaces/:name", h.GetInterface)
 		v1.PUT("/interfaces/:name/ipv4", h.ConfigureIPv4)
 		v1.PUT("/interfaces/:name/ipv6", h.ConfigureIPv6)
+		v1.GET("/connectivity", h.CheckConnectivity)
 	}
 }
 
@@ -90,6 +91,21 @@ func (h *NetworkHandler) ConfigureIPv4(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// CheckConnectivity 检查网络连通性
+func (h *NetworkHandler) CheckConnectivity(c *gin.Context) {
+	target := c.Query("target") // 可选参数，不传则使用默认值
+
+	result, err := h.networkService.CheckConnectivity(target)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // ConfigureIPv6 配置IPv6
