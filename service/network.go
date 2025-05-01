@@ -9,6 +9,7 @@ import (
 	"networkconfig/models"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1118,4 +1119,90 @@ func (s *NetworkService) CheckConnectivity(target string) (models.ConnectivityRe
 	result.Success = true
 	result.StatusCode = resp.StatusCode
 	return result, nil
+}
+
+// GetAvailableWiFiHotspots 获取指定WIFI网卡可连接的热点列表
+func (s *NetworkService) GetAvailableWiFiHotspots(interfaceName string) ([]models.WiFiHotspot, error) {
+	log.Printf("开始获取接口 %s 的可用WIFI热点列表", interfaceName)
+
+	// 执行netsh命令获取热点列表
+	cmd := exec.Command("netsh", "wlan", "show", "networks", "interface="+interfaceName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("获取WIFI热点列表失败: %v, 输出: %s", err, string(output))
+		return nil, fmt.Errorf("获取WIFI热点列表失败: %v", err)
+	}
+
+	// 解析命令输出
+	hotspots := parseWiFiHotspots(string(output))
+	log.Printf("成功获取 %d 个WIFI热点", len(hotspots))
+	return hotspots, nil
+}
+
+// parseWiFiHotspots 解析netsh命令输出的WIFI热点信息
+func parseWiFiHotspots(output string) []models.WiFiHotspot {
+	var hotspots []models.WiFiHotspot
+	var currentHotspot *models.WiFiHotspot
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// 检测新热点开始
+		if strings.HasPrefix(line, "SSID") {
+			if currentHotspot != nil {
+				hotspots = append(hotspots, *currentHotspot)
+			}
+			currentHotspot = &models.WiFiHotspot{}
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.SSID = strings.TrimSpace(parts[1])
+			}
+			continue
+		}
+
+		if currentHotspot == nil {
+			continue
+		}
+
+		// 解析其他热点属性
+		if strings.HasPrefix(line, "Network type") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.RadioType = strings.TrimSpace(parts[1])
+			}
+		} else if strings.HasPrefix(line, "Authentication") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.SecurityType = strings.TrimSpace(parts[1])
+			}
+		} else if strings.HasPrefix(line, "Signal") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				percent := strings.TrimSuffix(strings.TrimSpace(parts[1]), "%")
+				if signal, err := strconv.Atoi(percent); err == nil {
+					currentHotspot.SignalLevel = signal
+				}
+			}
+		} else if strings.HasPrefix(line, "Channel") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				if channel, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					currentHotspot.Channel = channel
+				}
+			}
+		} else if strings.HasPrefix(line, "BSSID") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.BSSID = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	// 添加最后一个热点
+	if currentHotspot != nil {
+		hotspots = append(hotspots, *currentHotspot)
+	}
+
+	return hotspots
 }

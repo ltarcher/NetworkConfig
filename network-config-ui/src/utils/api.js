@@ -64,6 +64,14 @@ export const networkApi = {
     console.log(`Sending to /interfaces/${encodedName}/ipv4:`, config)
     const response = await api.put(`/interfaces/${encodedName}/ipv4`, config)
     return response.data
+  },
+
+  // 获取WIFI热点列表
+  getWiFiHotspots: async (name) => {
+    const encodedName = encodeURIComponent(name)
+    console.log(`Requesting hotspots for interface: ${encodedName}`)
+    const response = await api.get(`/interfaces/${encodedName}/hotspots`)
+    return response.data
   }
 }
 

@@ -29,6 +29,7 @@ func (h *NetworkHandler) RegisterRoutes(router *gin.Engine) {
 		v1.PUT("/interfaces/:name/ipv4", h.ConfigureIPv4)
 		v1.PUT("/interfaces/:name/ipv6", h.ConfigureIPv6)
 		v1.GET("/connectivity", h.CheckConnectivity)
+		v1.GET("/interfaces/:name/hotspots", h.GetWiFiHotspots)
 	}
 }
 
@@ -139,4 +140,18 @@ func (h *NetworkHandler) ConfigureIPv6(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// GetWiFiHotspots 获取指定WIFI网卡的热点列表
+func (h *NetworkHandler) GetWiFiHotspots(c *gin.Context) {
+	name := c.Param("name")
+	hotspots, err := h.networkService.GetAvailableWiFiHotspots(name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, hotspots)
 }

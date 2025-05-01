@@ -66,3 +66,15 @@ type ConnectivityResult struct {
 	DurationMs int64  `json:"duration_ms"` // 响应时间(毫秒)
 	Error      string `json:"error"`       // 错误信息(成功时为"")
 }
+
+// WiFiHotspot 表示可连接的WIFI热点信息
+type WiFiHotspot struct {
+	SSID          string `json:"ssid"`           // 热点名称
+	BSSID         string `json:"bssid"`          // 热点MAC地址
+	SignalLevel   int    `json:"signal_level"`   // 信号强度(百分比)
+	Channel       int    `json:"channel"`        // 信道
+	SecurityType  string `json:"security_type"`  // 加密类型(WPA2等)
+	IsConnected   bool   `json:"is_connected"`   // 是否已连接
+	Frequency     int    `json:"frequency"`      // 频率(MHz)
+	RadioType     string `json:"radio_type"`     // 无线类型(802.11ac等)
+}
