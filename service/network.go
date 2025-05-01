@@ -400,21 +400,30 @@ func getDriverInfo(name string) (models.Driver, error) {
 
 // ConfigureInterface 配置网卡
 func (s *NetworkService) ConfigureInterface(name string, config models.InterfaceConfig) error {
-	// 兼容处理：如果顶层字段有值，合并到ipv4_config
-	if config.DHCPEnabled && config.IPv4Config != nil {
-		config.IPv4Config.DHCP = config.DHCPEnabled
-	}
-	if config.DNSAuto && config.IPv4Config != nil {
-		config.IPv4Config.DNSAuto = config.DNSAuto
-	}
+	// 添加调试日志
+	log.Printf("接收到接口 %s 的配置请求: %+v", name, config)
 
 	if config.IPv4Config != nil {
+		log.Printf("IPv4配置详情: IP=%s, Mask=%s, Gateway=%s, DNS=%v, DHCP=%v, DNSAuto=%v",
+			config.IPv4Config.IP,
+			config.IPv4Config.Mask,
+			config.IPv4Config.Gateway,
+			config.IPv4Config.DNS,
+			config.IPv4Config.DHCP,
+			config.IPv4Config.DNSAuto)
+
 		if err := s.configureIPv4(name, *config.IPv4Config); err != nil {
 			return fmt.Errorf("配置IPv4失败: %v", err)
 		}
 	}
 
 	if config.IPv6Config != nil {
+		log.Printf("IPv6配置详情: IP=%s, PrefixLen=%d, Gateway=%s, DNS=%v",
+			config.IPv6Config.IP,
+			config.IPv6Config.PrefixLen,
+			config.IPv6Config.Gateway,
+			config.IPv6Config.DNS)
+
 		if err := s.configureIPv6(name, *config.IPv6Config); err != nil {
 			return fmt.Errorf("配置IPv6失败: %v", err)
 		}
@@ -496,12 +505,27 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 			name, config.IP, config.Mask, config.Gateway)
 		log.Printf("执行命令: %s", cmdStr)
 
-		cmd := exec.Command("netsh", "interface", "ipv4", "set", "address",
-			fmt.Sprintf(`name="%s"`, name),
+		// 处理包含空格的接口名称
+		interfaceName := fmt.Sprintf(`"%s"`, name)
+		args := []string{
+			"interface", "ipv4", "set", "address",
+			"name=" + interfaceName,
 			"static",
-			config.IP,
-			config.Mask,
-			config.Gateway)
+		}
+
+		// 确保IP和掩码不为空
+		if config.IP == "" || config.Mask == "" {
+			return fmt.Errorf("IP地址和子网掩码不能为空")
+		}
+
+		args = append(args, config.IP, config.Mask)
+
+		// 添加网关（可选）
+		if config.Gateway != "" {
+			args = append(args, config.Gateway)
+		}
+
+		cmd := exec.Command("netsh", args...)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {

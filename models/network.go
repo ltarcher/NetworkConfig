@@ -56,8 +56,4 @@ type IPv6Config struct {
 type InterfaceConfig struct {
 	IPv4Config *IPv4Config `json:"ipv4_config,omitempty"`
 	IPv6Config *IPv6Config `json:"ipv6_config,omitempty"`
-
-	// 以下字段仅为兼容旧版本前端，新版本不应使用
-	DHCPEnabled bool `json:"dhcp_enabled,omitempty"` // 兼容字段
-	DNSAuto     bool `json:"dns_auto,omitempty"`     // 兼容字段
 }
