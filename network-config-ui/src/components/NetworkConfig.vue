@@ -441,6 +441,11 @@ const handleInterfaceSelect = async (name) => {
       gateway: data.ipv4_config?.gateway || '',
       dns: data.ipv4_config?.dns || ['']
     }
+
+    // 如果是无线网卡，自动刷新热点列表
+    if (data.hardware?.adapter_type === 'wireless') {
+      await refreshWifiList()
+    }
   } catch (error) {
     ElMessage.error('获取接口详情失败')
   } finally {
