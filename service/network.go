@@ -9,6 +9,7 @@ import (
 	"networkconfig/models"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -1094,6 +1095,352 @@ func parseDNSServers(output string) []string {
 }
 
 // CheckConnectivity 检查网络连通性
+// WiFiHotspot 表示WiFi热点信息
+type WiFiHotspot struct {
+	SSID           string `json:"ssid"`
+	SignalStrength int    `json:"signal_strength"` // 信号强度百分比
+	Security       string `json:"security"`        // 加密类型
+	BSSID          string `json:"bssid"`           // MAC地址
+	Channel        int    `json:"channel"`         // 信道
+}
+
+func (s *NetworkService) GetWiFiHotspots(interfaceName string) ([]WiFiHotspot, error) {
+	// 验证网卡是否存在且是无线网卡
+	iface, err := s.GetInterface(interfaceName)
+	if err != nil {
+		return nil, fmt.Errorf("网卡不存在: %v", err)
+	}
+
+	if iface.Hardware.AdapterType != "wireless" {
+		return nil, fmt.Errorf("网卡%s不是无线网卡", interfaceName)
+	}
+
+	// 根据操作系统执行不同命令
+	switch runtime.GOOS {
+	case "windows":
+		return s.scanWiFiWindows(interfaceName)
+	case "linux":
+		return s.scanWiFiLinux(interfaceName)
+	default:
+		return nil, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
+func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, error) {
+	log.Printf("开始扫描接口 %s 的WiFi热点...", interfaceName)
+
+	// 构造命令
+	args := []string{
+		"wlan", "show", "networks",
+		"mode=bssid",
+		fmt.Sprintf("interface=%s", interfaceName),
+	}
+	cmd := exec.Command("netsh", args...)
+	log.Printf("执行命令: netsh %v", args)
+
+	// 执行命令并捕获输出
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("WiFi扫描命令执行失败: %v", err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Printf("命令错误输出: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("扫描WiFi失败: %v", err)
+	}
+
+	// 记录原始输出用于调试
+	rawOutput := string(out)
+	log.Printf("WiFi扫描原始输出(前100字符): %q...", safeSubstring(rawOutput, 100))
+	if len(rawOutput) > 1000 {
+		log.Printf("完整输出已记录到调试日志")
+	}
+
+	// 解析输出
+	hotspots, err := parseNetshOutput(rawOutput)
+	if err != nil {
+		log.Printf("解析WiFi扫描输出失败: %v", err)
+		return nil, fmt.Errorf("解析WiFi扫描结果失败: %v", err)
+	}
+
+	log.Printf("成功扫描到 %d 个WiFi热点", len(hotspots))
+	return hotspots, nil
+}
+
+// safeSubstring 安全截取字符串，避免索引越界
+func safeSubstring(s string, length int) string {
+	if length <= 0 {
+		return ""
+	}
+	if len(s) <= length {
+		return s
+	}
+	return s[:length]
+}
+
+func (s *NetworkService) scanWiFiLinux(interfaceName string) ([]WiFiHotspot, error) {
+	cmd := exec.Command("nmcli", "-t", "-f",
+		"SSID,SIGNAL,SECURITY,BSSID,CHAN",
+		"device", "wifi", "list",
+		fmt.Sprintf("ifname=%s", interfaceName))
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// 如果nmcli不可用，尝试使用iwlist
+		return s.scanWiFiLinuxIwlist(interfaceName)
+	}
+
+	// 解析nmcli命令输出
+	return parseNmcliOutput(string(out))
+}
+
+func (s *NetworkService) scanWiFiLinuxIwlist(interfaceName string) ([]WiFiHotspot, error) {
+	cmd := exec.Command("iwlist", interfaceName, "scan")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("扫描WiFi失败: %v", err)
+	}
+
+	// 解析iwlist命令输出
+	return parseIwlistOutput(string(out))
+}
+
+// 解析netsh命令输出 (Windows)
+func parseNetshOutput(output string) ([]WiFiHotspot, error) {
+	log.Printf("开始解析WiFi扫描结果...")
+	startTime := time.Now()
+	defer func() {
+		log.Printf("WiFi扫描结果解析完成，耗时: %v", time.Since(startTime))
+	}()
+
+	var hotspots []WiFiHotspot
+	var currentHotspot *WiFiHotspot
+	var parseErrors int
+
+	lines := strings.Split(output, "\n")
+	log.Printf("需要解析 %d 行输出", len(lines))
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// 检测新SSID开始 (处理中英文标签)
+		if strings.HasPrefix(line, "SSID") || strings.HasPrefix(line, "SSID 名称") {
+			if currentHotspot != nil {
+				hotspots = append(hotspots, *currentHotspot)
+				log.Printf("完成解析热点: %s (信号: %d%%, 加密: %s)",
+					currentHotspot.SSID, currentHotspot.SignalStrength, currentHotspot.Security)
+			}
+			currentHotspot = &WiFiHotspot{}
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.SSID = strings.TrimSpace(parts[1])
+				log.Printf("发现新热点: %s (行 %d)", currentHotspot.SSID, i+1)
+			} else {
+				log.Printf("警告: 无法解析SSID行: %q", line)
+				parseErrors++
+			}
+			continue
+		}
+
+		if currentHotspot == nil {
+			continue
+		}
+
+		// 解析信号强度 (处理中英文标签)
+		if strings.HasPrefix(line, "Signal") || strings.HasPrefix(line, "信号") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				percentStr := strings.TrimSpace(strings.TrimSuffix(parts[1], "%"))
+				if signal, err := strconv.Atoi(percentStr); err == nil {
+					currentHotspot.SignalStrength = signal
+				} else {
+					log.Printf("警告: 无效的信号强度值: %q (行 %d)", parts[1], i+1)
+					parseErrors++
+				}
+			}
+		}
+
+		// 解析加密类型 (处理中英文标签)
+		if strings.HasPrefix(line, "Authentication") || strings.HasPrefix(line, "身份验证") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.Security = strings.TrimSpace(parts[1])
+			}
+		}
+
+		// 解析BSSID (处理中英文标签)
+		if strings.HasPrefix(line, "BSSID") || strings.HasPrefix(line, "BSSID") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				currentHotspot.BSSID = strings.TrimSpace(parts[1])
+			}
+		}
+
+		// 解析信道 (处理中英文标签)
+		if strings.HasPrefix(line, "Channel") || strings.HasPrefix(line, "频道") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 1 {
+				if channel, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					currentHotspot.Channel = channel
+				} else {
+					log.Printf("警告: 无效的信道值: %q (行 %d)", parts[1], i+1)
+					parseErrors++
+				}
+			}
+		}
+	}
+
+	// 添加最后一个热点
+	if currentHotspot != nil {
+		hotspots = append(hotspots, *currentHotspot)
+		log.Printf("完成解析热点: %s (信号: %d%%, 加密: %s)",
+			currentHotspot.SSID, currentHotspot.SignalStrength, currentHotspot.Security)
+	}
+
+	// 过滤掉无效热点
+	var validHotspots []WiFiHotspot
+	var skipped int
+	for _, hotspot := range hotspots {
+		if hotspot.SSID != "" {
+			validHotspots = append(validHotspots, hotspot)
+		} else {
+			skipped++
+		}
+	}
+
+	log.Printf("解析完成: 共 %d 个热点(有效 %d 个，跳过 %d 个)，解析错误 %d 处",
+		len(hotspots), len(validHotspots), skipped, parseErrors)
+	return validHotspots, nil
+}
+
+// 解析nmcli命令输出 (Linux)
+func parseNmcliOutput(output string) ([]WiFiHotspot, error) {
+	var hotspots []WiFiHotspot
+	// 实现解析逻辑...
+	return hotspots, nil
+}
+
+// 解析iwlist命令输出 (Linux)
+func parseIwlistOutput(output string) ([]WiFiHotspot, error) {
+	var hotspots []WiFiHotspot
+	// 实现解析逻辑...
+	return hotspots, nil
+}
+
+func (s *NetworkService) ConnectWiFi(interfaceName, ssid, password string) error {
+	// 验证网卡是否存在且是无线网卡
+	iface, err := s.GetInterface(interfaceName)
+	if err != nil {
+		return fmt.Errorf("网卡不存在: %v", err)
+	}
+
+	if iface.Hardware.AdapterType != "wireless" {
+		return fmt.Errorf("网卡%s不是无线网卡", interfaceName)
+	}
+
+	// 根据操作系统执行不同命令
+	switch runtime.GOOS {
+	case "windows":
+		return s.connectWiFiWindows(interfaceName, ssid, password)
+	case "linux":
+		return s.connectWiFiLinux(interfaceName, ssid, password)
+	default:
+		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
+func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string) error {
+	cmd := exec.Command("netsh", "wlan", "connect",
+		fmt.Sprintf("name=%s", ssid),
+		fmt.Sprintf("interface=%s", interfaceName))
+
+	if password != "" {
+		// 先删除已有配置文件
+		_ = exec.Command("netsh", "wlan", "delete", "profile",
+			fmt.Sprintf("name=%s", ssid),
+			fmt.Sprintf("interface=%s", interfaceName)).Run()
+
+		// 创建XML配置文件
+		profile := fmt.Sprintf(`<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+	<name>%s</name>
+	<SSIDConfig>
+		<SSID>
+			<name>%s</name>
+		</SSID>
+	</SSIDConfig>
+	<connectionType>ESS</connectionType>
+	<connectionMode>auto</connectionMode>
+	<MSM>
+		<security>
+			<authEncryption>
+				<authentication>WPA2PSK</authentication>
+				<encryption>AES</encryption>
+				<useOneX>false</useOneX>
+			</authEncryption>
+			<sharedKey>
+				<keyType>passPhrase</keyType>
+				<protected>false</protected>
+				<keyMaterial>%s</keyMaterial>
+			</sharedKey>
+		</security>
+	</MSM>
+</WLANProfile>`, ssid, ssid, password)
+
+		// 写入临时文件
+		tmpFile, err := os.CreateTemp("", "wifi_*.xml")
+		if err != nil {
+			return fmt.Errorf("创建临时文件失败: %v", err)
+		}
+		defer os.Remove(tmpFile.Name())
+
+		if _, err := tmpFile.WriteString(profile); err != nil {
+			return fmt.Errorf("写入配置文件失败: %v", err)
+		}
+		tmpFile.Close()
+
+		// 添加配置文件
+		addCmd := exec.Command("netsh", "wlan", "add", "profile",
+			fmt.Sprintf("filename=%s", tmpFile.Name()),
+			fmt.Sprintf("interface=%s", interfaceName))
+		if out, err := addCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("添加配置文件失败: %s, %v", string(out), err)
+		}
+	}
+
+	// 执行连接命令
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("连接失败: %s, %v", string(out), err)
+	}
+
+	return nil
+}
+
+func (s *NetworkService) connectWiFiLinux(interfaceName, ssid, password string) error {
+	// Linux实现使用nmcli
+	var cmd *exec.Cmd
+	if password == "" {
+		cmd = exec.Command("nmcli", "device", "wifi", "connect",
+			ssid,
+			"ifname", interfaceName)
+	} else {
+		cmd = exec.Command("nmcli", "device", "wifi", "connect",
+			ssid,
+			"password", password,
+			"ifname", interfaceName)
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("连接失败: %s, %v", string(out), err)
+	}
+
+	return nil
+}
+
 func (s *NetworkService) CheckConnectivity(target string) (models.ConnectivityResult, error) {
 	if target == "" {
 		target = "http://www.baidu.com" // 默认探测百度

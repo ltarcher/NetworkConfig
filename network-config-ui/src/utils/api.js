@@ -68,9 +68,45 @@ export const networkApi = {
 
   // 获取WIFI热点列表
   getWiFiHotspots: async (name) => {
-    const encodedName = encodeURIComponent(name)
-    console.log(`Requesting hotspots for interface: ${encodedName}`)
-    const response = await api.get(`/interfaces/${encodedName}/hotspots`)
+    try {
+      const encodedName = encodeURIComponent(name)
+      console.log(`Requesting WiFi hotspots for interface: ${encodedName}`)
+      
+      const response = await api.get(`/interfaces/${encodedName}/hotspots`, {
+        timeout: 60000 // 60秒超时
+      })
+      
+      // 验证响应数据格式
+      if (!Array.isArray(response.data)) {
+        throw new Error('Invalid response format: expected array')
+      }
+      
+      // 确保每个热点有必需字段
+      const validHotspots = response.data.map(hotspot => ({
+        ssid: hotspot.ssid || 'Unknown',
+        signal_strength: typeof hotspot.signal_strength === 'number' ? hotspot.signal_strength : 0,
+        security: hotspot.security || 'Unknown',
+        bssid: hotspot.bssid || '00:00:00:00:00:00',
+        channel: typeof hotspot.channel === 'number' ? hotspot.channel : 0
+      }))
+      
+      return validHotspots
+    } catch (error) {
+      console.error('Failed to get WiFi hotspots:', error)
+      throw new Error(`获取WiFi热点列表失败: ${error.message}`)
+    }
+  },
+
+  // 连接指定WiFi热点
+  connectToWiFi: async (params) => {
+    const { interface: iface, ssid, password } = params
+    const encodedIface = encodeURIComponent(iface)
+    const encodedSsid = encodeURIComponent(ssid)
+    console.log(`Connecting to WiFi: ${ssid} on interface ${iface}`)
+    const response = await api.post(`/interfaces/${encodedIface}/connect`, {
+      ssid: encodedSsid,
+      password
+    })
     return response.data
   }
 }

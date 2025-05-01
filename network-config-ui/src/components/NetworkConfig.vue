@@ -73,7 +73,93 @@
                 {{ currentInterface.dhcp_enabled ? '启用' : '禁用' }}
               </el-tag>
             </el-descriptions-item>
+            <el-descriptions-item label="网卡类型">
+              <el-tag :type="currentInterface.hardware?.adapter_type === 'wireless' ? 'warning' : ''">
+                {{ currentInterface.hardware?.adapter_type === 'wireless' ? '无线网卡' : '有线网卡' }}
+              </el-tag>
+            </el-descriptions-item>
           </el-descriptions>
+
+          <!-- 无线热点管理区域 -->
+          <div v-if="currentInterface.hardware?.adapter_type === 'wireless'" class="wifi-management">
+            <el-card class="wifi-list">
+              <template #header>
+                <div class="card-header">
+                  <span>可用WiFi热点</span>
+                  <el-button 
+                    type="primary" 
+                    size="small" 
+                    @click="refreshWifiList"
+                    :loading="wifiLoading">
+                    刷新热点
+                  </el-button>
+                </div>
+              </template>
+              
+              <el-table
+                :data="wifiList"
+                style="width: 100%"
+                @row-click="handleWifiSelect"
+                highlight-current-row>
+                <el-table-column
+                  prop="ssid"
+                  label="热点名称"
+                  width="180">
+                </el-table-column>
+                <el-table-column
+                  prop="signal"
+                  label="信号强度"
+                  width="100">
+                  <template #default="{row}">
+                    <el-rate
+                      v-model="row.signal"
+                      disabled
+                      :max="4"
+                      :colors="['#99A9BF', '#F7BA2A', '#FF9900']">
+                    </el-rate>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  prop="security"
+                  label="加密类型"
+                  width="120">
+                </el-table-column>
+              </el-table>
+            </el-card>
+
+            <!-- WiFi连接表单 -->
+            <el-card class="wifi-connect" v-if="selectedWifi">
+              <template #header>
+                <div class="card-header">
+                  <span>连接至 {{ selectedWifi.ssid }}</span>
+                </div>
+              </template>
+              
+              <el-form
+                ref="wifiForm"
+                :model="wifiForm"
+                :rules="wifiRules"
+                label-width="80px">
+                <el-form-item label="密码" prop="password" v-if="selectedWifi.security !== 'Open'">
+                  <el-input
+                    v-model="wifiForm.password"
+                    type="password"
+                    placeholder="请输入WiFi密码"
+                    show-password>
+                  </el-input>
+                </el-form-item>
+                
+                <el-form-item>
+                  <el-button
+                    type="primary"
+                    @click="connectWifi"
+                    :loading="connecting">
+                    连接
+                  </el-button>
+                </el-form-item>
+              </el-form>
+            </el-card>
+          </div>
           
           <el-form
             ref="formRef"
@@ -180,6 +266,20 @@ import { Connection } from '@element-plus/icons-vue'
 
 // 状态管理
 const store = useNetworkStore()
+const wifiList = ref([])
+const selectedWifi = ref(null)
+const wifiLoading = ref(false)
+const connecting = ref(false)
+const wifiForm = ref({
+  password: ''
+})
+
+const wifiRules = {
+  password: [
+    { required: true, message: '请输入WiFi密码', trigger: 'blur' }
+  ]
+}
+
 const interfaces = computed(() => {
   try {
     return store.interfaces || []
@@ -312,6 +412,73 @@ const handleInterfaceSelect = async (name) => {
     ElMessage.error('获取接口详情失败')
   } finally {
     loading.close()
+  }
+}
+
+// WiFi热点管理方法
+const refreshWifiList = async () => {
+  if (!currentInterface.value?.hardware?.adapter_type === 'wireless') {
+    ElMessage.warning('当前网卡不是无线网卡')
+    return
+  }
+  
+  wifiLoading.value = true
+  wifiList.value = [] // 清空列表
+  
+  try {
+    const hotspots = await networkApi.getWiFiHotspots(currentInterface.value.name)
+    
+    // 转换数据格式并计算信号强度评分
+    wifiList.value = hotspots.map(wifi => ({
+      ssid: wifi.ssid,
+      signal: calculateSignalRating(wifi.signal_strength),
+      security: wifi.security,
+      bssid: wifi.bssid,
+      channel: wifi.channel,
+      rawSignal: wifi.signal_strength
+    }))
+    
+    if (wifiList.value.length === 0) {
+      ElMessage.info('未发现可用WiFi热点')
+    }
+  } catch (error) {
+    console.error('WiFi热点刷新失败:', error)
+    ElMessage.error('获取WiFi列表失败: ' + error.message)
+  } finally {
+    wifiLoading.value = false
+  }
+}
+
+// 计算信号强度评分 (0-4)
+const calculateSignalRating = (strength) => {
+  if (strength >= 75) return 4
+  if (strength >= 50) return 3
+  if (strength >= 25) return 2
+  if (strength > 0) return 1
+  return 0
+}
+
+const handleWifiSelect = (wifi) => {
+  selectedWifi.value = wifi
+  wifiForm.value.password = ''
+}
+
+const connectWifi = async () => {
+  if (!selectedWifi.value) return
+  
+  connecting.value = true
+  try {
+    await networkApi.connectWifi({
+      interface: currentInterface.value.name,
+      ssid: selectedWifi.value.ssid,
+      password: wifiForm.value.password
+    })
+    ElMessage.success('连接成功')
+    await refreshInterfaces() // 刷新接口状态
+  } catch (error) {
+    ElMessage.error('连接失败: ' + error.message)
+  } finally {
+    connecting.value = false
   }
 }
 
