@@ -437,6 +437,8 @@ const refreshWifiList = async () => {
       channel: wifi.channel,
       rawSignal: wifi.signal_strength
     }))
+    // 按照信号强度倒序排列
+    .sort((a, b) => b.rawSignal - a.rawSignal)
     
     if (wifiList.value.length === 0) {
       ElMessage.info('未发现可用WiFi热点')
