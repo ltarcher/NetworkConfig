@@ -457,34 +457,45 @@ func (s *NetworkService) configureIPv4(name string, config models.IPv4Config) er
 	if config.DHCP {
 		log.Printf("开始为接口 %s 配置DHCP自动获取IP", name)
 
-		// 设置DHCP自动获取IP
-		log.Printf("为接口 %s 设置DHCP自动获取IP", name)
-
-		cmd := exec.Command("netsh",
-			"interface",
-			"ipv4",
-			"set",
-			"address",
-			fmt.Sprintf("name=%s", name), // 直接传递接口名称，无需引号
-			"source=dhcp")
-
-		output, err := cmd.CombinedOutput()
+		// 检查当前是否已经是DHCP状态
+		currentDHCP, err := isDHCPEnabled(name)
 		if err != nil {
-			log.Printf("设置DHCP失败: %v, 输出: %s", err, string(output))
-			return fmt.Errorf("设置DHCP失败: %v, 输出: %s", err, string(output))
+			log.Printf("检查接口 %s 的DHCP状态失败: %v", name, err)
+			return fmt.Errorf("检查DHCP状态失败: %v", err)
 		}
-		log.Printf("成功设置DHCP自动获取IP")
+
+		if !currentDHCP {
+			// 当前不是DHCP状态，需要设置
+			log.Printf("为接口 %s 设置DHCP自动获取IP", name)
+
+			cmd := exec.Command("netsh",
+				"interface",
+				"ipv4",
+				"set",
+				"address",
+				fmt.Sprintf("name=%s", name),
+				"source=dhcp")
+
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("设置DHCP失败: %v, 输出: %s", err, string(output))
+				return fmt.Errorf("设置DHCP失败: %v, 输出: %s", err, string(output))
+			}
+			log.Printf("成功设置DHCP自动获取IP")
+		} else {
+			log.Printf("接口 %s 已经是DHCP状态，跳过设置", name)
+		}
 
 		// 设置DNS
 		if config.DNSAuto {
 			cmdStr := fmt.Sprintf("netsh interface ipv4 set dnsservers name=\"%s\" source=dhcp", name)
 			log.Printf("执行命令: %s", cmdStr)
 
-			cmd = exec.Command("netsh", "interface", "ipv4", "set", "dnsservers",
+			cmd := exec.Command("netsh", "interface", "ipv4", "set", "dnsservers",
 				fmt.Sprintf("name=%s", name),
 				"source=dhcp")
 
-			output, err = cmd.CombinedOutput()
+			output, err := cmd.CombinedOutput()
 			if err != nil {
 				log.Printf("设置DNS自动获取失败: %v, 输出: %s", err, string(output))
 				return fmt.Errorf("设置DNS自动获取失败: %v, 输出: %s", err, string(output))
@@ -1033,6 +1044,28 @@ func parseGateway(output string) string {
 	}
 
 	return ""
+}
+
+// isDHCPEnabled 检查指定网络接口是否启用了DHCP
+func isDHCPEnabled(name string) (bool, error) {
+	// 使用netsh命令检查接口配置
+	cmd := exec.Command("netsh", "interface", "ipv4", "show", "config", "name="+name)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("执行netsh命令失败: %v, 输出: %s", err, string(output))
+	}
+
+	// 解析输出查找DHCP状态
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "DHCP enabled") {
+			// 检查是否包含"Yes"表示启用
+			return strings.Contains(line, "Yes"), nil
+		}
+	}
+
+	return false, fmt.Errorf("无法从输出中确定DHCP状态: %s", string(output))
 }
 
 func parseDNSServers(output string) []string {
