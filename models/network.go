@@ -40,6 +40,8 @@ type IPv4Config struct {
 	Mask    string   `json:"mask"`
 	Gateway string   `json:"gateway"`
 	DNS     []string `json:"dns"`
+	DHCP    bool     `json:"dhcp"`
+	DNSAuto bool     `json:"dnsAuto"`
 }
 
 // IPv6Config 表示IPv6配置信息
