@@ -52,8 +52,8 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 
 		// 跳过未启用的接口
 		if iface.Flags&net.FlagUp == 0 {
-			log.Printf("跳过未启用的接口: %s", iface.Name)
-			continue
+			log.Printf("未启用的接口: %s", iface.Name)
+			// continue
 		}
 
 		ifaceInfo, err := s.GetInterface(iface.Name)
