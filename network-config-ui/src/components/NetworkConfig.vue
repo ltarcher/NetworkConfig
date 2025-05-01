@@ -72,7 +72,10 @@
             label-width="100px"
           >
             <el-form-item>
-              <el-checkbox v-model="currentInterface.dhcp_enabled">自动获取IP和DNS</el-checkbox>
+              <el-checkbox v-model="currentInterface.dhcp_enabled">自动获取IP和子网掩码</el-checkbox>
+            </el-form-item>
+            <el-form-item>
+              <el-checkbox v-model="currentInterface.dns_auto">自动获取DNS</el-checkbox>
             </el-form-item>
             
             <el-form-item label="IP地址" prop="ip">
@@ -94,6 +97,18 @@
                 v-model="ipv4Form.gateway" 
                 placeholder="请输入网关地址"
                 :disabled="currentInterface.dhcp_enabled" />
+            </el-form-item>
+            
+            <el-form-item label="DNS" prop="dns">
+              <el-input 
+                v-model="ipv4Form.dns[0]" 
+                placeholder="主DNS服务器"
+                :disabled="currentInterface.dns_auto" />
+              <el-input 
+                v-model="ipv4Form.dns[1]" 
+                placeholder="备用DNS服务器"
+                :disabled="currentInterface.dns_auto"
+                style="margin-top: 10px;" />
             </el-form-item>
             
             <el-form-item label="DNS服务器">
@@ -289,18 +304,17 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     
-    const config = currentInterface.value.dhcp_enabled
-      ? null // DHCP启用时发送null表示自动获取
-      : {
-          ip: ipv4Form.value.ip,
-          mask: ipv4Form.value.mask,
-          gateway: ipv4Form.value.gateway,
-          dns: ipv4Form.value.dns.filter(dns => dns.trim() !== '')
-        }
+    const config = {
+      ip: currentInterface.value.dhcp_enabled ? '' : ipv4Form.value.ip,
+      mask: currentInterface.value.dhcp_enabled ? '' : ipv4Form.value.mask,
+      gateway: ipv4Form.value.gateway,
+      dns: currentInterface.value.dns_auto ? [] : ipv4Form.value.dns.filter(dns => dns.trim() !== '')
+    }
     
     await networkApi.updateIPv4Config(currentInterface.value.name, {
       ipv4_config: config,
-      dhcp_enabled: currentInterface.value.dhcp_enabled
+      dhcp_enabled: currentInterface.value.dhcp_enabled,
+      dns_auto: currentInterface.value.dns_auto
     })
     
     ElMessage.success('配置更新成功')
