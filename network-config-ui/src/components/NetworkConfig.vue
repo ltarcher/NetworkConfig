@@ -71,16 +71,29 @@
             :rules="formRules"
             label-width="100px"
           >
+            <el-form-item>
+              <el-checkbox v-model="currentInterface.dhcp_enabled">自动获取IP和DNS</el-checkbox>
+            </el-form-item>
+            
             <el-form-item label="IP地址" prop="ip">
-              <el-input v-model="ipv4Form.ip" placeholder="请输入IP地址" />
+              <el-input 
+                v-model="ipv4Form.ip" 
+                placeholder="请输入IP地址"
+                :disabled="currentInterface.dhcp_enabled" />
             </el-form-item>
             
             <el-form-item label="子网掩码" prop="mask">
-              <el-input v-model="ipv4Form.mask" placeholder="请输入子网掩码" />
+              <el-input 
+                v-model="ipv4Form.mask" 
+                placeholder="请输入子网掩码"
+                :disabled="currentInterface.dhcp_enabled" />
             </el-form-item>
             
-            <el-form-item label="网关" prop="gateway">
-              <el-input v-model="ipv4Form.gateway" placeholder="请输入网关地址" />
+            <el-form-item label="网关">
+              <el-input 
+                v-model="ipv4Form.gateway" 
+                placeholder="请输入网关地址"
+                :disabled="currentInterface.dhcp_enabled" />
             </el-form-item>
             
             <el-form-item label="DNS服务器">
@@ -216,16 +229,28 @@ const ipv4Form = ref({
 // 表单验证规则
 const formRules = {
   ip: [
-    { required: true, message: '请输入IP地址', trigger: 'blur' },
-    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的IP地址', trigger: 'blur' }
+    { 
+      required: !currentInterface.value?.dhcp_enabled, 
+      message: '请输入IP地址', 
+      trigger: 'blur' 
+    },
+    { 
+      pattern: /^(\d{1,3}\.){3}\d{1,3}$/, 
+      message: '请输入有效的IP地址', 
+      trigger: 'blur' 
+    }
   ],
   mask: [
-    { required: true, message: '请输入子网掩码', trigger: 'blur' },
-    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的子网掩码', trigger: 'blur' }
-  ],
-  gateway: [
-    { required: true, message: '请输入网关地址', trigger: 'blur' },
-    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的网关地址', trigger: 'blur' }
+    { 
+      required: !currentInterface.value?.dhcp_enabled, 
+      message: '请输入子网掩码', 
+      trigger: 'blur' 
+    },
+    { 
+      pattern: /^(\d{1,3}\.){3}\d{1,3}$/, 
+      message: '请输入有效的子网掩码', 
+      trigger: 'blur' 
+    }
   ]
 }
 
@@ -263,12 +288,21 @@ const handleSubmit = async () => {
   
   try {
     await formRef.value.validate()
+    
+    const config = currentInterface.value.dhcp_enabled
+      ? null // DHCP启用时发送null表示自动获取
+      : {
+          ip: ipv4Form.value.ip,
+          mask: ipv4Form.value.mask,
+          gateway: ipv4Form.value.gateway,
+          dns: ipv4Form.value.dns.filter(dns => dns.trim() !== '')
+        }
+    
     await networkApi.updateIPv4Config(currentInterface.value.name, {
-      ip: ipv4Form.value.ip,
-      mask: ipv4Form.value.mask,
-      gateway: ipv4Form.value.gateway,
-      dns: ipv4Form.value.dns.filter(dns => dns.trim() !== '')
+      ipv4_config: config,
+      dhcp_enabled: currentInterface.value.dhcp_enabled
     })
+    
     ElMessage.success('配置更新成功')
     await refreshInterfaces()
   } catch (error) {
