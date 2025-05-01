@@ -3,6 +3,16 @@
     <!-- 顶部标题 -->
     <el-header class="header">
       <h2>网络配置</h2>
+      <div class="debug-toggle">
+        <el-tooltip content="调试模式" placement="bottom">
+          <el-switch
+            v-model="debugMode"
+            @change="toggleDebugMode"
+            active-text="调试"
+            inactive-text=""
+          />
+        </el-tooltip>
+      </div>
     </el-header>
 
     <!-- 主体内容区域 -->
@@ -123,7 +133,7 @@
     </el-container>
 
     <!-- 底部调试控制台 -->
-    <el-footer class="footer">
+    <el-footer v-show="debugMode" class="footer">
       <el-card class="debug-console">
         <template #header>
           <div class="card-header">
@@ -196,6 +206,19 @@ const debugLogs = computed(() => {
     return []
   }
 })
+const debugMode = computed({
+  get: () => store.debugMode,
+  set: (value) => {
+    store.debugMode = value
+    localStorage.setItem('debugMode', value)
+  }
+})
+
+const toggleDebugMode = (value) => {
+  store.debugMode = value
+  localStorage.setItem('debugMode', value)
+}
+
 const logFilter = computed({
   get: () => store.logFilter,
   set: (value) => store.setLogFilter(value)
@@ -405,9 +428,16 @@ onUnmounted(() => {
   border-bottom: 1px solid #dcdfe6;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 20px;
   height: 60px;
   flex-shrink: 0;
+}
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .main-container {

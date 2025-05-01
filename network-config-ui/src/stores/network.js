@@ -7,7 +7,8 @@ export const useNetworkStore = defineStore('network', {
     interfaces: [],
     currentInterface: null,
     debugLogs: [],
-    logFilter: 'all' // 'all', 'error', 'success', 'info'
+    logFilter: 'all', // 'all', 'error', 'success', 'info'
+    debugMode: localStorage.getItem('debugMode') === 'true' || false
   }),
   getters: {
     filteredLogs: (state) => {
