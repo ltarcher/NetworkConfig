@@ -1824,7 +1824,7 @@ func (s *NetworkService) GetAvailableWiFiHotspots(interfaceName string) ([]model
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("获取WIFI热点列表失败: %v, 输出: %s", err, string(output))
-		return nil, fmt.Errorf("获取WIFI热点列表失败: %v", err)
+		return []models.WiFiHotspot{}, fmt.Errorf("获取WIFI热点列表失败: %v", err)
 	}
 
 	// 解析命令输出
