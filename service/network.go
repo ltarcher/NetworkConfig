@@ -23,12 +23,15 @@ var (
 
 // NetworkService 处理网络配置相关的操作
 type NetworkService struct {
-	// 可以添加需要的字段
+	Debug bool // 调试模式开关，true时获取网卡列表不进行过滤
 }
 
 // NewNetworkService 创建新的NetworkService实例
-func NewNetworkService() *NetworkService {
-	return &NetworkService{}
+// debug参数控制调试模式，true时获取网卡列表不进行过滤
+func NewNetworkService(debug bool) *NetworkService {
+	return &NetworkService{
+		Debug: debug,
+	}
 }
 
 // GetInterfaces 获取所有网卡信息
@@ -44,28 +47,31 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 	for _, iface := range ifaces {
 		log.Printf("正在处理接口: %s (MTU: %d, Flags: %v)", iface.Name, iface.MTU, iface.Flags)
 
-		// 跳过回环接口
-		if iface.Flags&net.FlagLoopback != 0 {
-			log.Printf("跳过回环接口: %s", iface.Name)
-			continue
-		}
+		// 调试模式下跳过所有过滤
+		if !s.Debug {
+			// 跳过回环接口
+			if iface.Flags&net.FlagLoopback != 0 {
+				log.Printf("跳过回环接口: %s", iface.Name)
+				continue
+			}
 
-		// 跳过Virtual虚拟接口
-		if strings.Contains(iface.Name, "Virtual") {
-			log.Printf("跳过Virtual虚拟接口: %s", iface.Name)
-			continue
-		}
+			// 跳过Virtual虚拟接口
+			if strings.Contains(iface.Name, "Virtual") {
+				log.Printf("跳过Virtual虚拟接口: %s", iface.Name)
+				continue
+			}
 
-		// 跳过WireGuard接口
-		if strings.Contains(strings.ToLower(iface.Name), "wireguard") {
-			log.Printf("跳过WireGuard接口: %s", iface.Name)
-			continue
-		}
+			// 跳过WireGuard接口
+			if strings.Contains(strings.ToLower(iface.Name), "wireguard") {
+				log.Printf("跳过WireGuard接口: %s", iface.Name)
+				continue
+			}
 
-		// 跳过未启用的接口
-		if iface.Flags&net.FlagUp == 0 {
-			log.Printf("未启用的接口: %s", iface.Name)
-			// continue
+			// 跳过未启用的接口
+			if iface.Flags&net.FlagUp == 0 {
+				log.Printf("未启用的接口: %s", iface.Name)
+				// continue
+			}
 		}
 
 		ifaceInfo, err := s.GetInterface(iface.Name)

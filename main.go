@@ -13,14 +13,38 @@ import (
 )
 
 func main() {
+	// 读取配置，优先级: 命令行参数 > .env > 默认值
+	var (
+		port  string
+		debug bool
+	)
+	flag.StringVar(&port, "port", "", "服务器监听端口")
+	flag.BoolVar(&debug, "debug", false, "启用调试模式(不过滤网卡)")
+	flag.Parse()
+
+	// 如果没有命令行参数，尝试从.env读取
+	if port == "" || !debug {
+		_ = godotenv.Load() // 忽略错误，文件不存在也没关系
+		if port == "" {
+			port = os.Getenv("NETWORK_CONFIG_PORT")
+		}
+		if !debug {
+			debug = os.Getenv("NETWORK_CONFIG_DEBUG") == "true"
+		}
+	}
+
 	// 检查管理员权限
 	if !isAdmin() {
 		log.Fatal("此程序需要管理员权限运行")
 	}
 
 	// 创建服务实例
-	networkService := service.NewNetworkService()
+	networkService := service.NewNetworkService(debug)
 	networkHandler := api.NewNetworkHandler(networkService)
+
+	if debug {
+		log.Println("警告: 调试模式已启用，网卡列表将不过滤")
+	}
 
 	// 设置gin模式
 	gin.SetMode(gin.ReleaseMode)
@@ -41,18 +65,6 @@ func main() {
 			"status": "ok",
 		})
 	})
-
-	// 启动服务器
-	// 读取端口配置，优先级: 命令行参数 > .env > 默认值
-	var port string
-	flag.StringVar(&port, "port", "", "服务器监听端口")
-	flag.Parse()
-
-	// 如果没有命令行参数，尝试从.env读取
-	if port == "" {
-		_ = godotenv.Load() // 忽略错误，文件不存在也没关系
-		port = os.Getenv("NETWORK_CONFIG_PORT")
-	}
 
 	// 设置默认值
 	if port == "" {
