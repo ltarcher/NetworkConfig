@@ -410,15 +410,54 @@ func isWirelessInterface(name string) bool {
 func getWirelessInfoViaNetsh(interfaceName string) (models.Hardware, error) {
 	log.Printf("尝试通过netsh获取接口 %s 的无线网卡信息", interfaceName)
 
-	cmd := exec.Command("netsh", "wlan", "show", "interfaces", fmt.Sprintf("interface=%s", interfaceName))
+	// 获取所有无线网卡接口信息
+	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("netsh命令执行失败: %v, 输出: %s", err, string(output))
 		return models.Hardware{}, fmt.Errorf("netsh命令执行失败: %v", err)
 	}
 
-	log.Printf("netsh原始输出:\n%s", string(output))
-	return parseWirelessNetshOutput(string(output)), nil
+	// 将输出转换为字符串
+	outputStr := string(output)
+	log.Printf("netsh原始输出:\n%s", outputStr)
+
+	// 按接口分割输出
+	interfaces := strings.Split(outputStr, "\n\n")
+	var targetOutput string
+	found := false
+
+	// 遍历每个接口块，查找指定的网卡
+	for _, iface := range interfaces {
+		// 从接口块中提取网卡名称
+		lines := strings.Split(iface, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Name") || strings.HasPrefix(line, "名称") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) > 1 {
+					name := strings.TrimSpace(parts[1])
+					log.Printf("检查接口: %q 是否匹配目标: %q", name, interfaceName)
+					if name == interfaceName {
+						targetOutput = iface
+						found = true
+						break
+					}
+				}
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		log.Printf("在可用的无线网卡列表中未找到接口 %s", interfaceName)
+		return models.Hardware{}, fmt.Errorf("指定的网卡 %s 不是可用的无线网卡", interfaceName)
+	}
+
+	log.Printf("找到目标网卡 %s 的信息块:\n%s", interfaceName, targetOutput)
+	return parseWirelessNetshOutput(targetOutput), nil
 }
 
 // parseWirelessNetshOutput 解析netsh命令输出
@@ -427,7 +466,11 @@ func parseWirelessNetshOutput(output string) models.Hardware {
 		AdapterType: models.AdapterTypeWireless,
 	}
 
+	log.Printf("开始解析无线网卡信息块...")
 	lines := strings.Split(output, "\n")
+	var rxRate, txRate string
+	var manufacturer string
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -443,25 +486,102 @@ func parseWirelessNetshOutput(output string) models.Hardware {
 		value := strings.TrimSpace(parts[1])
 
 		switch key {
-		case "Description":
+		case "Description", "描述":
 			hw.ProductName = value
-		case "Physical address":
-			hw.MACAddress = value
-		case "Receive rate (Mbps)":
-			if hw.Speed == "" {
-				hw.Speed = "Rx: " + value + " Mbps"
-			} else {
-				hw.Speed += ", Rx: " + value + " Mbps"
+			// 尝试从描述中提取制造商信息
+			if strings.Contains(value, "Intel") {
+				manufacturer = "Intel Corporation"
+			} else if strings.Contains(value, "Realtek") {
+				manufacturer = "Realtek Semiconductor Corp."
+			} else if strings.Contains(value, "Broadcom") {
+				manufacturer = "Broadcom Inc."
+			} else if strings.Contains(value, "MediaTek") {
+				manufacturer = "MediaTek Inc."
 			}
-		case "Transmit rate (Mbps)":
-			if hw.Speed == "" {
-				hw.Speed = "Tx: " + value + " Mbps"
-			} else {
-				hw.Speed += ", Tx: " + value + " Mbps"
+			log.Printf("解析到产品名称: %s", value)
+
+		case "Name", "名称":
+			if hw.ProductName == "" {
+				hw.ProductName = value
+				log.Printf("使用网卡名称作为产品名称: %s", value)
+			}
+
+		case "Physical address", "物理地址":
+			hw.MACAddress = value
+			log.Printf("解析到MAC地址: %s", value)
+
+		case "Media type", "媒体类型", "Connection type", "连接类型":
+			hw.PhysicalMedia = value
+			log.Printf("解析到媒体类型: %s", value)
+
+		case "State", "状态":
+			// 记录状态但不存储，可用于调试
+			log.Printf("网卡状态: %s", value)
+
+		case "SSID", "SSID 名称":
+			// 记录当前连接的SSID，可用于调试
+			log.Printf("当前连接的SSID: %s", value)
+
+		case "Receive rate (Mbps)", "接收速率 (Mbps)":
+			rxRate = value
+			log.Printf("解析到接收速率: %s Mbps", value)
+
+		case "Transmit rate (Mbps)", "传输速率 (Mbps)":
+			txRate = value
+			log.Printf("解析到传输速率: %s Mbps", value)
+
+		case "Signal", "信号":
+			// 记录信号强度，可用于调试
+			log.Printf("当前信号强度: %s", value)
+
+		case "Band", "频段":
+			// 记录频段信息，可用于调试
+			log.Printf("工作频段: %s", value)
+
+		case "Radio type", "无线电类型":
+			// 可以用来确定是802.11n/ac等
+			log.Printf("无线电类型: %s", value)
+			if hw.PhysicalMedia == "" {
+				hw.PhysicalMedia = fmt.Sprintf("802.11 %s", value)
 			}
 		}
 	}
 
+	// 设置制造商信息
+	if manufacturer != "" {
+		hw.Manufacturer = manufacturer
+		log.Printf("设置制造商: %s", manufacturer)
+	}
+
+	// 组合速率信息
+	if rxRate != "" || txRate != "" {
+		var speedParts []string
+		if rxRate != "" {
+			speedParts = append(speedParts, fmt.Sprintf("Rx: %s Mbps", rxRate))
+		}
+		if txRate != "" {
+			speedParts = append(speedParts, fmt.Sprintf("Tx: %s Mbps", txRate))
+		}
+		hw.Speed = strings.Join(speedParts, ", ")
+		log.Printf("设置最终速率: %s", hw.Speed)
+	}
+
+	// 设置总线类型为PCI（大多数无线网卡都是PCI设备）
+	hw.BusType = "PCI"
+
+	// 验证必要字段
+	if hw.ProductName == "" {
+		log.Printf("警告: 未能解析到产品名称")
+	}
+	if hw.MACAddress == "" {
+		log.Printf("警告: 未能解析到MAC地址")
+	}
+	if hw.PhysicalMedia == "" {
+		hw.PhysicalMedia = "802.11 Wireless"
+		log.Printf("设置默认媒体类型: %s", hw.PhysicalMedia)
+	}
+
+	log.Printf("无线网卡信息解析完成: %+v", hw)
 	return hw
 }
 
