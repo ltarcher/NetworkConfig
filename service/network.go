@@ -135,7 +135,7 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 		DHCPEnabled: dhcpEnabled,
 	}
 
-	// 获取硬件和驱动信息（即使失败也继续）
+	// 获取硬件和驱动信息
 	hardware, err := getHardwareInfo(name)
 	if err != nil {
 		log.Printf("获取接口 %s 硬件信息失败: %v", name, err)
