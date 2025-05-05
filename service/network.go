@@ -56,6 +56,12 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 			continue
 		}
 
+		// 跳过WireGuard接口
+		if strings.Contains(strings.ToLower(iface.Name), "wireguard") {
+			log.Printf("跳过WireGuard接口: %s", iface.Name)
+			continue
+		}
+
 		// 跳过未启用的接口
 		if iface.Flags&net.FlagUp == 0 {
 			log.Printf("未启用的接口: %s", iface.Name)
@@ -83,6 +89,18 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 			// interfaces = append(interfaces, basicInfo)
 			continue
 		}
+
+		// 检查MAC地址和产品名称是否为空
+		if ifaceInfo.Hardware.MACAddress == "" {
+			log.Printf("跳过MAC地址为空的接口: %s", iface.Name)
+			continue
+		}
+
+		if ifaceInfo.Hardware.ProductName == "" {
+			log.Printf("跳过产品名称为空的接口: %s", iface.Name)
+			continue
+		}
+
 		interfaces = append(interfaces, ifaceInfo)
 	}
 
