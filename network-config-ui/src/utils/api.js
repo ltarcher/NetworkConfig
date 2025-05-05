@@ -4,7 +4,7 @@ import { useNetworkStore } from '../stores/network'
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 60000
+  timeout: 180000
 })
 
 // 请求拦截器

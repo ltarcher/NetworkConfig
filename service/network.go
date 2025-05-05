@@ -1254,7 +1254,7 @@ func (s *NetworkService) GetWiFiHotspots(interfaceName string) ([]WiFiHotspot, e
 	case "linux":
 		return s.scanWiFiLinux(interfaceName)
 	default:
-		return nil, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+		return []WiFiHotspot{}, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 }
 
