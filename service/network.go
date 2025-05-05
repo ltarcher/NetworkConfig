@@ -214,6 +214,38 @@ func (s *NetworkService) GetInterface(name string) (models.Interface, error) {
 
 // getHardwareInfo 获取网卡硬件信息
 func getHardwareInfo(name string) (models.Hardware, error) {
+	// 首先尝试使用PowerShell获取信息
+	hw, err := getHardwareInfoViaPowerShell(name)
+	if err == nil {
+		return hw, nil
+	}
+
+	log.Printf("通过PowerShell获取接口 %s 硬件信息失败: %v，尝试备用方案", name, err)
+
+	// 检查是否是无线网卡
+	if isWirelessInterface(name) {
+		// 尝试通过netsh获取无线网卡信息
+		hw, err := getWirelessInfoViaNetsh(name)
+		if err == nil {
+			log.Printf("成功通过netsh获取接口 %s 的无线网卡信息", name)
+			return hw, nil
+		}
+		log.Printf("通过netsh获取接口 %s 无线网卡信息失败: %v", name, err)
+	}
+
+	// 如果都失败，返回最少信息
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return models.Hardware{}, fmt.Errorf("无法获取网卡基本信息: %v", err)
+	}
+
+	return models.Hardware{
+		MACAddress: iface.HardwareAddr.String(),
+	}, nil
+}
+
+// getHardwareInfoViaPowerShell 通过PowerShell获取硬件信息
+func getHardwareInfoViaPowerShell(name string) (models.Hardware, error) {
 	// 使用PowerShell命令获取网卡硬件信息，设置UTF-8编码
 	psCmd := fmt.Sprintf(`
 		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -345,6 +377,74 @@ func getHardwareInfo(name string) (models.Hardware, error) {
 		BusType:       result.AdapterType,
 		PNPDeviceID:   result.PNPDeviceID,
 	}, nil
+}
+
+// isWirelessInterface 判断是否是无线网卡
+func isWirelessInterface(name string) bool {
+	// 根据常见无线网卡命名规则判断
+	lowerName := strings.ToLower(name)
+	return strings.Contains(lowerName, "wi-fi") ||
+		strings.Contains(lowerName, "wireless") ||
+		strings.Contains(lowerName, "wlan")
+}
+
+// getWirelessInfoViaNetsh 通过netsh获取无线网卡信息
+func getWirelessInfoViaNetsh(interfaceName string) (models.Hardware, error) {
+	log.Printf("尝试通过netsh获取接口 %s 的无线网卡信息", interfaceName)
+
+	cmd := exec.Command("netsh", "wlan", "show", "interfaces", fmt.Sprintf("interface=%s", interfaceName))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("netsh命令执行失败: %v, 输出: %s", err, string(output))
+		return models.Hardware{}, fmt.Errorf("netsh命令执行失败: %v", err)
+	}
+
+	log.Printf("netsh原始输出:\n%s", string(output))
+	return parseWirelessNetshOutput(string(output)), nil
+}
+
+// parseWirelessNetshOutput 解析netsh命令输出
+func parseWirelessNetshOutput(output string) models.Hardware {
+	hw := models.Hardware{
+		AdapterType: models.AdapterTypeWireless,
+	}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) < 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "Description":
+			hw.ProductName = value
+		case "Physical address":
+			hw.MACAddress = value
+		case "Receive rate (Mbps)":
+			if hw.Speed == "" {
+				hw.Speed = "Rx: " + value + " Mbps"
+			} else {
+				hw.Speed += ", Rx: " + value + " Mbps"
+			}
+		case "Transmit rate (Mbps)":
+			if hw.Speed == "" {
+				hw.Speed = "Tx: " + value + " Mbps"
+			} else {
+				hw.Speed += ", Tx: " + value + " Mbps"
+			}
+		}
+	}
+
+	return hw
 }
 
 // getDriverInfo 获取网卡驱动信息
