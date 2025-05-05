@@ -1237,15 +1237,8 @@ type WiFiHotspot struct {
 }
 
 func (s *NetworkService) GetWiFiHotspots(interfaceName string) ([]WiFiHotspot, error) {
-	// 验证网卡是否存在且是无线网卡
-	//iface, err := s.GetInterface(interfaceName)
-	//if err != nil {
-	//	return nil, fmt.Errorf("网卡不存在: %v", err)
-	//}
-
-	//if iface.Hardware.AdapterType != "wireless" {
-	//	return nil, fmt.Errorf("网卡%s不是无线网卡", interfaceName)
-	//}
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
 
 	// 根据操作系统执行不同命令
 	switch runtime.GOOS {
@@ -1254,11 +1247,14 @@ func (s *NetworkService) GetWiFiHotspots(interfaceName string) ([]WiFiHotspot, e
 	case "linux":
 		return s.scanWiFiLinux(interfaceName)
 	default:
-		return []WiFiHotspot{}, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+		return hotspots, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
 }
 
 func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, error) {
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
+
 	log.Printf("开始扫描接口 %s 的WiFi热点...", interfaceName)
 
 	// 构造命令
@@ -1277,7 +1273,7 @@ func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, e
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			log.Printf("命令错误输出: %s", string(exitErr.Stderr))
 		}
-		return []WiFiHotspot{}, fmt.Errorf("扫描WiFi失败: %v", err)
+		return hotspots, fmt.Errorf("扫描WiFi失败: %v", err)
 	}
 
 	// 记录原始输出用于调试
@@ -1288,7 +1284,7 @@ func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, e
 	}
 
 	// 解析输出
-	hotspots, err := parseNetshOutput(rawOutput)
+	hotspots, err = parseNetshOutput(rawOutput)
 	if err != nil {
 		log.Printf("解析WiFi扫描输出失败: %v", err)
 		return []WiFiHotspot{}, fmt.Errorf("解析WiFi扫描结果失败: %v", err)
@@ -1310,6 +1306,9 @@ func safeSubstring(s string, length int) string {
 }
 
 func (s *NetworkService) scanWiFiLinux(interfaceName string) ([]WiFiHotspot, error) {
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
+
 	log.Printf("开始使用nmcli扫描接口 %s 的WiFi热点...", interfaceName)
 
 	args := []string{
@@ -1335,7 +1334,7 @@ func (s *NetworkService) scanWiFiLinux(interfaceName string) ([]WiFiHotspot, err
 		log.Printf("完整输出已记录到调试日志")
 	}
 
-	hotspots, err := parseNmcliOutput(rawOutput)
+	hotspots, err = parseNmcliOutput(rawOutput)
 	if err != nil {
 		log.Printf("解析nmcli输出失败: %v", err)
 		return nil, fmt.Errorf("解析nmcli输出失败: %v", err)
@@ -1384,7 +1383,8 @@ func parseNetshOutput(output string) ([]WiFiHotspot, error) {
 		log.Printf("WiFi扫描结果解析完成，耗时: %v", time.Since(startTime))
 	}()
 
-	var hotspots []WiFiHotspot
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
 	var currentHotspot *WiFiHotspot
 	var parseErrors int
 
@@ -1495,7 +1495,8 @@ func parseNmcliOutput(output string) ([]WiFiHotspot, error) {
 		log.Printf("nmcli输出解析完成，耗时: %v", time.Since(startTime))
 	}()
 
-	var hotspots []WiFiHotspot
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
 	var parseErrors int
 
 	lines := strings.Split(output, "\n")
@@ -1556,7 +1557,8 @@ func parseIwlistOutput(output string) ([]WiFiHotspot, error) {
 		log.Printf("iwlist输出解析完成，耗时: %v", time.Since(startTime))
 	}()
 
-	var hotspots []WiFiHotspot
+	// 初始化空切片，确保不返回nil
+	hotspots := make([]WiFiHotspot, 0)
 	var currentHotspot *WiFiHotspot
 	var parseErrors int
 	var cellCount int
