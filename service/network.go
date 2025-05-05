@@ -1277,7 +1277,7 @@ func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, e
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			log.Printf("命令错误输出: %s", string(exitErr.Stderr))
 		}
-		return nil, fmt.Errorf("扫描WiFi失败: %v", err)
+		return []WiFiHotspot{}, fmt.Errorf("扫描WiFi失败: %v", err)
 	}
 
 	// 记录原始输出用于调试
@@ -1291,7 +1291,7 @@ func (s *NetworkService) scanWiFiWindows(interfaceName string) ([]WiFiHotspot, e
 	hotspots, err := parseNetshOutput(rawOutput)
 	if err != nil {
 		log.Printf("解析WiFi扫描输出失败: %v", err)
-		return nil, fmt.Errorf("解析WiFi扫描结果失败: %v", err)
+		return []WiFiHotspot{}, fmt.Errorf("解析WiFi扫描结果失败: %v", err)
 	}
 
 	log.Printf("成功扫描到 %d 个WiFi热点", len(hotspots))
