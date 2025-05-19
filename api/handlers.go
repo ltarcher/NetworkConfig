@@ -31,6 +31,11 @@ func (h *NetworkHandler) RegisterRoutes(router *gin.Engine) {
 		v1.GET("/connectivity", h.CheckConnectivity)
 		v1.POST("/interfaces/:name/connect", h.ConnectWiFi)
 		v1.GET("/interfaces/:name/hotspots", h.GetWiFiHotspots)
+
+		// 移动热点相关接口
+		v1.GET("/hotspot", h.GetHotspotStatus)
+		v1.POST("/hotspot", h.ConfigureHotspot)
+		v1.PUT("/hotspot/status", h.SetHotspotStatus)
 	}
 }
 
@@ -93,6 +98,88 @@ func (h *NetworkHandler) ConfigureIPv4(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// GetHotspotStatus 获取移动热点状态
+func (h *NetworkHandler) GetHotspotStatus(c *gin.Context) {
+	status, err := h.networkService.GetHotspotStatus()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, status)
+}
+
+// ConfigureHotspot 配置移动热点
+func (h *NetworkHandler) ConfigureHotspot(c *gin.Context) {
+	var config models.HotspotConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	// 验证请求数据
+	if config.SSID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "SSID不能为空",
+		})
+		return
+	}
+
+	if config.Password != "" && len(config.Password) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "密码长度必须至少为8个字符",
+		})
+		return
+	}
+
+	err := h.networkService.ConfigureHotspot(config)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "移动热点配置成功",
+	})
+}
+
+// SetHotspotStatus 启用或禁用移动热点
+func (h *NetworkHandler) SetHotspotStatus(c *gin.Context) {
+	var request struct {
+		Enabled bool `json:"enabled"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	err := h.networkService.SetHotspotStatus(request.Enabled)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	status := "启用"
+	if !request.Enabled {
+		status = "禁用"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "移动热点" + status + "成功",
+	})
 }
 
 // CheckConnectivity 检查网络连通性

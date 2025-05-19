@@ -85,3 +85,20 @@ type WiFiHotspot struct {
 	Frequency    int    `json:"frequency"`     // 频率(MHz)
 	RadioType    string `json:"radio_type"`    // 无线类型(802.11ac等)
 }
+
+// HotspotConfig 表示移动热点配置信息
+type HotspotConfig struct {
+	SSID     string `json:"ssid"`     // 热点名称
+	Password string `json:"password"` // 热点密码
+	Enabled  bool   `json:"enabled"`  // 是否启用
+}
+
+// HotspotStatus 表示移动热点状态信息
+type HotspotStatus struct {
+	Enabled        bool   `json:"enabled"`        // 是否启用
+	SSID           string `json:"ssid"`           // 热点名称
+	MaxClients     int    `json:"max_clients"`    // 最大客户端数
+	Authentication string `json:"authentication"` // 认证方式
+	Encryption     string `json:"encryption"`     // 加密方式
+	ClientsCount   int    `json:"clients_count"`  // 当前连接的客户端数
+}
