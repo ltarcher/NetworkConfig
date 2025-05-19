@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"networkconfig/models"
 	"networkconfig/service"
@@ -102,29 +103,39 @@ func (h *NetworkHandler) ConfigureIPv4(c *gin.Context) {
 
 // GetHotspotStatus 获取移动热点状态
 func (h *NetworkHandler) GetHotspotStatus(c *gin.Context) {
+	log.Printf("开始处理获取移动热点状态请求")
+
 	status, err := h.networkService.GetHotspotStatus()
 	if err != nil {
+		log.Printf("获取移动热点状态失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
 
+	log.Printf("成功获取移动热点状态: %+v", status)
 	c.JSON(http.StatusOK, status)
 }
 
 // ConfigureHotspot 配置移动热点
 func (h *NetworkHandler) ConfigureHotspot(c *gin.Context) {
+	log.Printf("开始处理配置移动热点请求")
+
 	var config models.HotspotConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
+		log.Printf("解析请求数据失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "无效的请求数据: " + err.Error(),
 		})
 		return
 	}
 
+	log.Printf("请求配置: %+v", config)
+
 	// 验证请求数据
 	if config.SSID == "" {
+		log.Printf("验证失败: SSID不能为空")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "SSID不能为空",
 		})
@@ -132,6 +143,7 @@ func (h *NetworkHandler) ConfigureHotspot(c *gin.Context) {
 	}
 
 	if config.Password != "" && len(config.Password) < 8 {
+		log.Printf("验证失败: 密码长度不足8个字符")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "密码长度必须至少为8个字符",
 		})
@@ -140,12 +152,14 @@ func (h *NetworkHandler) ConfigureHotspot(c *gin.Context) {
 
 	err := h.networkService.ConfigureHotspot(config)
 	if err != nil {
+		log.Printf("配置移动热点失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
 
+	log.Printf("移动热点配置成功")
 	c.JSON(http.StatusOK, gin.H{
 		"message": "移动热点配置成功",
 	})
@@ -153,19 +167,25 @@ func (h *NetworkHandler) ConfigureHotspot(c *gin.Context) {
 
 // SetHotspotStatus 启用或禁用移动热点
 func (h *NetworkHandler) SetHotspotStatus(c *gin.Context) {
+	log.Printf("开始处理移动热点状态变更请求")
+
 	var request struct {
 		Enabled bool `json:"enabled"`
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Printf("解析请求数据失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "无效的请求数据: " + err.Error(),
 		})
 		return
 	}
 
+	log.Printf("请求状态变更: enabled=%v", request.Enabled)
+
 	err := h.networkService.SetHotspotStatus(request.Enabled)
 	if err != nil {
+		log.Printf("变更移动热点状态失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
@@ -177,6 +197,7 @@ func (h *NetworkHandler) SetHotspotStatus(c *gin.Context) {
 		status = "禁用"
 	}
 
+	log.Printf("移动热点%s成功", status)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "移动热点" + status + "成功",
 	})
