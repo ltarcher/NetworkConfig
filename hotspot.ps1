@@ -9,9 +9,6 @@ param (
     [string]$Password,
     
     [Parameter()]
-    [int]$MaxClients = 100,
-    
-    [Parameter()]
     [switch]$Enable
 )
 
@@ -113,7 +110,6 @@ function Set-HotspotConfig {
     param (
         [string]$SSID,
         [string]$Password,
-        [int]$MaxClients,
         [bool]$Enable
     )
     

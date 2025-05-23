@@ -7,8 +7,7 @@ const store = useNetworkStore()
 const hotspotFormRef = ref(null)
 const hotspotConfig = ref({
   ssid: '',
-  password: '',
-  maxClients: 100
+  password: ''
 })
 const configuringHotspot = ref(false)
 const togglingHotspot = ref(false)
