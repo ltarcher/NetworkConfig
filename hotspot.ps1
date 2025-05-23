@@ -124,7 +124,7 @@ function Set-HotspotConfig {
         
         # Configure the access point
         $operation = $tetheringManager.ConfigureAccessPointAsync($config)
-        Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+        #Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
         
         if ($Enable) {
             $operation = $tetheringManager.StartTetheringAsync()
