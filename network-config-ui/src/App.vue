@@ -17,7 +17,7 @@ const $route = useRoute()
           active-text-color="#ffd04b"
         >
           <el-menu-item index="/network">网卡管理</el-menu-item>
-          <el-menu-item index="/hotspot">移动热点</el-menu-item>
+          <el-menu-item index="/hotspot">接入热点</el-menu-item>
         </el-menu>
       </el-header>
       <el-main>
