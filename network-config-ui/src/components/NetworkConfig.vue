@@ -719,13 +719,13 @@ onUnmounted(() => {
   border-bottom: 1px solid #dcdfe6;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 20px;
   height: 60px;
   flex-shrink: 0;
 }
 
 .debug-toggle {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
