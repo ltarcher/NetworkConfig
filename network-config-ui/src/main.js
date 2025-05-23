@@ -21,5 +21,9 @@ app.use(ElementPlus, {
   size: 'default'
 })
 
+// 使用路由
+import router from './router'
+app.use(router)
+
 // 挂载应用
 app.mount('#app')

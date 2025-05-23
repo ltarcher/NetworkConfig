@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { networkApi } from '../utils/api'
 
 const MAX_LOGS = 1000 // 最大日志数量
 
@@ -9,7 +10,13 @@ export const useNetworkStore = defineStore('network', {
     hotspots: [],
     debugLogs: [],
     logFilter: 'all', // 'all', 'error', 'success', 'info'
-    debugMode: localStorage.getItem('debugMode') === 'true' || false
+    debugMode: localStorage.getItem('debugMode') === 'true' || false,
+    // 热点相关状态
+    hotspotStatus: null,
+    hotspotConfig: {
+      ssid: '',
+      password: ''
+    }
   }),
   getters: {
     filteredLogs: (state) => {
@@ -57,6 +64,43 @@ export const useNetworkStore = defineStore('network', {
     },
     setLogFilter(filter) {
       this.logFilter = filter
+    },
+
+    // 获取热点状态
+    async fetchHotspotStatus() {
+      try {
+        this.hotspotStatus = await networkApi.getHotspotStatus()
+        this.addDebugLog('获取热点状态成功', this.hotspotStatus, 'success')
+      } catch (error) {
+        this.addDebugLog('获取热点状态失败', error.message, 'error')
+        throw error
+      }
+    },
+    
+    // 配置热点
+    async configureHotspot(config) {
+      try {
+        const result = await networkApi.configureHotspot(config)
+        this.hotspotConfig = config
+        this.addDebugLog('配置热点成功', result, 'success')
+        return result
+      } catch (error) {
+        this.addDebugLog('配置热点失败', error.message, 'error')
+        throw error
+      }
+    },
+    
+    // 设置热点状态
+    async setHotspotStatus(enabled) {
+      try {
+        const result = await networkApi.setHotspotStatus(enabled)
+        this.hotspotStatus = { ...this.hotspotStatus, enabled }
+        this.addDebugLog(`${enabled ? '启用' : '禁用'}热点成功`, result, 'success')
+        return result
+      } catch (error) {
+        this.addDebugLog(`${enabled ? '启用' : '禁用'}热点失败`, error.message, 'error')
+        throw error
+      }
     }
   }
 })

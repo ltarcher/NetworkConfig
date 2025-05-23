@@ -291,7 +291,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useNetworkStore } from '../stores/network'
-import { networkApi } from '../utils/api'
+import networkApi from '../utils/api'
 import { ElMessage, ElLoading } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
 
