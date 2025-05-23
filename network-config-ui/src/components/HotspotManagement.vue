@@ -70,7 +70,7 @@ const toggleHotspot = async () => {
     <el-card class="hotspot-card">
       <template #header>
         <div class="card-header">
-          <span>移动热点管理</span>
+          <span>接入热点管理</span>
         </div>
       </template>
       
