@@ -1,18 +1,24 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"net"
 	"networkconfig/api"
 	"networkconfig/service"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	// 设置日志格式
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	// 读取配置，优先级: 命令行参数 > .env > 默认值
 	var (
 		port  string
@@ -35,7 +41,40 @@ func main() {
 
 	// 检查管理员权限
 	if !isAdmin() {
-		log.Fatal("此程序需要管理员权限运行")
+		log.Fatal("此程序需要管理员权限运行。请右键点击程序，选择'以管理员身份运行'。")
+	}
+
+	// 检查PowerShell执行策略
+	cmd := exec.Command("powershell", "-Command", "Get-ExecutionPolicy")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		policy := strings.TrimSpace(string(output))
+		log.Printf("当前PowerShell执行策略: %s", policy)
+		if policy == "Restricted" {
+			log.Println("警告: PowerShell执行策略为Restricted，可能影响热点管理功能。建议使用管理员权限运行以下命令：")
+			log.Println("Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned")
+		}
+	}
+
+	// 检查移动热点状态
+	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-File", "hotspot.ps1", "status")
+	output, err = cmd.CombinedOutput()
+	if err == nil {
+		var status struct {
+			Success bool `json:"Success"`
+			Enabled bool `json:"Enabled"`
+		}
+		if err := json.Unmarshal(output, &status); err == nil {
+			if status.Success {
+				log.Printf("当前热点状态: %v", map[bool]string{true: "已启用", false: "已禁用"}[status.Enabled])
+			} else {
+				log.Printf("获取热点状态失败")
+			}
+		} else {
+			log.Printf("解析热点状态失败: %v", err)
+		}
+	} else {
+		log.Printf("检查热点状态失败: %v", err)
 	}
 
 	// 创建服务实例
@@ -85,7 +124,14 @@ func main() {
 // isAdmin 检查当前用户是否具有管理员权限
 func isAdmin() bool {
 	// 在Windows中，检查当前进程是否具有管理员权限
+	// 首先检查物理驱动器访问权限
 	if _, err := os.Open("\\\\.\\PHYSICALDRIVE0"); err == nil {
+		return true
+	}
+
+	// 检查netsh命令权限
+	cmd := exec.Command("netsh", "wlan", "show", "hostednetwork")
+	if err := cmd.Run(); err == nil {
 		return true
 	}
 

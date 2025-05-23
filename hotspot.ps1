@@ -1,109 +1,239 @@
-$PSVersionTable
-"-" * 100
+param (
+    [Parameter(Position=0, Mandatory=$true)]
+    [string]$Action,
+    
+    [Parameter()]
+    [string]$SSID,
+    
+    [Parameter()]
+    [string]$Password,
+    
+    [Parameter()]
+    [int]$MaxClients = 100,
+    
+    [Parameter()]
+    [switch]$Enable
+)
 
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+# Set output encoding to UTF-8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['*:Encoding'] = 'utf8'
 
-Function Await($WinRtTask, $ResultType) {
-    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-    $netTask = $asTask.Invoke($null, @($WinRtTask))
-    $netTask.Wait(-1) | Out-Null
-    $netTask.Result
+# Check if running as administrator
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    @{
+        Success = $false
+        Error = "This script requires administrator privileges"
+    } | ConvertTo-Json
+    exit 1
 }
 
-Function AwaitAction($WinRtAction) {
-    $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and !$_.IsGenericMethod })[0]
-    $netTask = $asTask.Invoke($null, @($WinRtAction))
-    $netTask.Wait(-1) | Out-Null
-}
-
-Function Get_TetheringManager() {
-    $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
-    $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
-    return $tetheringManager;
-}
-
-Function SetHotspot($Enable) {
-    $tetheringManager = Get_TetheringManager
-
-    if ($Enable -eq 1) {
-        if ($tetheringManager.TetheringOperationalState -eq 1)
-        {
-            "Hotspot is already On!"
-        }
-        else{
-            "Hotspot is off! Turning it on"
-            Await ($tetheringManager.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-        }
-    }
-    else {
-        if ($tetheringManager.TetheringOperationalState -eq 1)
-        {
-            "Hotspot is on! Turning it off"
-            Await ($tetheringManager.StopTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-        }
-        else{
-            "Hotspot is already Off!"
-        }
-    }
-}
-
-# Define a function to check the status of the hotspot
-Function Check_HotspotStatus() {
-    $tetheringManager = Get_TetheringManager
-    return $tetheringManager.TetheringOperationalState -eq "Off"
-}
-
-# Define a function to start the hotspot
-Function Start_Hotspot() {
-    $tetheringManager = Get_TetheringManager
-    Await ($tetheringManager.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
-}
-
-Function exitCountdown($sec)
-{
-    for (; $sec -ge 0; --$sec)
-    {
-        "$sec"
-        Start-Sleep -Seconds 1
-    }
-    exit 0
-}
-
-if ($args.Length -eq 0) {
-    while (Check_HotspotStatus) {
-        SetHotspot 1
-        Start-Sleep -Seconds 2
-        if (Check_HotspotStatus)
-        {
-            "Failure.Try again in 2s."
-            Start-Sleep -Seconds 2
-            continue
-        }
-        else
-        {
-            "Success.Exit in 10s."
-            exitCountdown 10
-            exit 0
-        }
+# Load Windows Runtime assemblies
+try {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    
+    # Helper function to await WinRT async operations
+    function Await {
+        param(
+            [object]$WinRtTask,
+            [Type]$ResultType
+        )
+        
+        $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | 
+            Where-Object { 
+                $_.Name -eq 'AsTask' -and 
+                $_.GetParameters().Count -eq 1 -and 
+                $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' 
+            })[0]
+        
+        $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+        $netTask = $asTask.Invoke($null, @($WinRtTask))
+        $netTask.Wait(-1) | Out-Null
+        return $netTask.Result
     }
 
-    "Hotspot is already.Exit in 10s."
-    exitCountdown 10
+    # Get TetheringManager instance
+    function Get-TetheringManager {
+        try {
+            $connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+            if ($null -eq $connectionProfile) {
+                throw "No active internet connection found"
+            }
+            
+            $tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+            if ($null -eq $tetheringManager) {
+                throw "Failed to create tethering manager"
+            }
+            
+            return $tetheringManager
+        }
+        catch {
+            throw "Failed to initialize tethering manager: $_"
+        }
+    }
 }
-else {
-    switch ($args[0]) {
-        "0" {
-            SetHotspot 0
-            break
+catch {
+    @{
+        Success = $false
+        Error = "Failed to load Windows Runtime assemblies: $_"
+    } | ConvertTo-Json
+    exit 1
+}
+
+# Function to get hotspot status
+function Get-HotspotStatus {
+    try {
+        $tetheringManager = Get-TetheringManager
+        $config = $tetheringManager.GetCurrentAccessPointConfiguration()
+        $state = $tetheringManager.TetheringOperationalState
+        $clients = $tetheringManager.GetTetheringClients()
+
+        @{
+            Success = $true
+            Enabled = $state -eq 1  # 1 means "On"
+            SSID = $config.Ssid
+            ClientsCount = $clients.Count
+            Authentication = $config.Authentication
+            Encryption = $config.Encryption
+            MaxClientCount = $config.MaxClientCount
+        } | ConvertTo-Json
+    }
+    catch {
+        @{
+            Success = $false
+            Error = $_.Exception.Message
+        } | ConvertTo-Json
+        exit 1
+    }
+}
+
+# Function to configure hotspot
+function Set-HotspotConfig {
+    param (
+        [string]$SSID,
+        [string]$Password,
+        [int]$MaxClients,
+        [bool]$Enable
+    )
+    
+    try {
+        $tetheringManager = Get-TetheringManager
+        
+        # Create new configuration
+        $config = New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
+        $config.Ssid = $SSID
+        $config.Passphrase = $Password
+        # MaxClientCount is not available in Windows 10/11 API
+        
+        # Configure the access point
+        $operation = $tetheringManager.ConfigureAccessPointAsync($config)
+        Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+        
+        if ($Enable) {
+            $operation = $tetheringManager.StartTetheringAsync()
+            Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
         }
-        "1" {
-            SetHotspot 1
-            break
+        
+        @{
+            Success = $true
+            Message = "Hotspot configured successfully"
+        } | ConvertTo-Json
+    }
+    catch {
+        @{
+            Success = $false
+            Error = $_.Exception.Message
+        } | ConvertTo-Json
+        exit 1
+    }
+}
+
+# Function to set hotspot status
+function Set-HotspotStatus {
+    param (
+        [bool]$Enable
+    )
+    
+    try {
+        $tetheringManager = Get-TetheringManager
+        
+        if ($Enable) {
+            $operation = $tetheringManager.StartTetheringAsync()
+            $result = Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+            $message = "Hotspot enabled"
+        } else {
+            $operation = $tetheringManager.StopTetheringAsync()
+            $result = Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+            $message = "Hotspot disabled"
         }
-        default {
-            "Invalid parameter, please enter 1 to turn on hotspot, enter 0 to turn off hotspot"
+        
+        @{
+            Success = $true
+            Message = $message
+        } | ConvertTo-Json
+    }
+    catch {
+        @{
+            Success = $false
+            Error = $_.Exception.Message
+        } | ConvertTo-Json
+        exit 1
+    }
+}
+
+# Execute based on action
+switch ($Action) {
+    "status" {
+        Get-HotspotStatus
+    }
+    
+    "configure" {
+        if ([string]::IsNullOrEmpty($SSID)) {
+            @{
+                Success = $false
+                Error = "SSID is required"
+            } | ConvertTo-Json
             exit 1
         }
+        if ($SSID.Length -gt 32) {
+            @{
+                Success = $false
+                Error = "SSID length must be 32 characters or less"
+            } | ConvertTo-Json
+            exit 1
+        }
+        if ([string]::IsNullOrEmpty($Password)) {
+            @{
+                Success = $false
+                Error = "Password is required"
+            } | ConvertTo-Json
+            exit 1
+        }
+        if ($Password.Length -lt 8 -or $Password.Length -gt 63) {
+            @{
+                Success = $false
+                Error = "Password length must be between 8 and 63 characters"
+            } | ConvertTo-Json
+            exit 1
+        }
+        
+        Set-HotspotConfig -SSID $SSID -Password $Password -MaxClients $MaxClients -Enable $Enable
+    }
+    
+    "enable" {
+        Set-HotspotStatus -Enable $true
+    }
+    
+    "disable" {
+        Set-HotspotStatus -Enable $false
+    }
+    
+    default {
+        @{
+            Success = $false
+            Error = "Unknown action: $Action"
+        } | ConvertTo-Json
+        exit 1
     }
 }

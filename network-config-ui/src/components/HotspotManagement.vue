@@ -7,7 +7,8 @@ const store = useNetworkStore()
 const hotspotFormRef = ref(null)
 const hotspotConfig = ref({
   ssid: '',
-  password: ''
+  password: '',
+  maxClients: 100
 })
 const configuringHotspot = ref(false)
 const togglingHotspot = ref(false)
@@ -74,14 +75,30 @@ const toggleHotspot = async () => {
         </div>
       </template>
       
-      <el-descriptions v-if="hotspotStatus" :column="1" border>
+      <el-descriptions v-if="store.hotspotStatus" :column="2" border>
         <el-descriptions-item label="当前状态">
-          <el-tag :type="hotspotStatus.enabled ? 'success' : 'danger'">
-            {{ hotspotStatus.enabled ? '已启用' : '已禁用' }}
+          <el-tag :type="store.hotspotStatus.enabled ? 'success' : 'danger'">
+            {{ store.hotspotStatus.enabled ? '已启用' : '已禁用' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="热点名称">
-          {{ hotspotStatus.ssid || '未配置' }}
+          {{ store.hotspotStatus.ssid || '未配置' }}
+        </el-descriptions-item>
+        
+        <el-descriptions-item label="认证方式">
+          {{ store.hotspotStatus.authentication || 'WPA2-Personal' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="加密方式">
+          {{ store.hotspotStatus.encryption || 'AES' }}
+        </el-descriptions-item>
+        
+        <el-descriptions-item label="最大客户端数">
+          {{ store.hotspotStatus.maxClients || 100 }}
+        </el-descriptions-item>
+        <el-descriptions-item label="当前客户端数">
+          <el-tag :type="store.hotspotStatus.clientsCount > 0 ? 'success' : 'info'">
+            {{ store.hotspotStatus.clientsCount || 0 }}
+          </el-tag>
         </el-descriptions-item>
       </el-descriptions>
       
@@ -109,6 +126,8 @@ const toggleHotspot = async () => {
             clearable
           />
         </el-form-item>
+
+        <!-- Windows API does not support MaxClients configuration -->
         
         <el-form-item>
           <el-button 
@@ -119,12 +138,12 @@ const toggleHotspot = async () => {
             保存配置
           </el-button>
           <el-button 
-            :type="hotspotStatus?.enabled ? 'danger' : 'success'"
+            :type="store.hotspotStatus?.enabled ? 'danger' : 'success'"
             @click="toggleHotspot"
             :disabled="!hotspotConfig.ssid"
             :loading="togglingHotspot"
           >
-            {{ hotspotStatus?.enabled ? '禁用热点' : '启用热点' }}
+            {{ store.hotspotStatus?.enabled ? '禁用热点' : '启用热点' }}
           </el-button>
         </el-form-item>
       </el-form>

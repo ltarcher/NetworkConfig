@@ -1,0 +1,11 @@
+{
+    "name": "NetworkConfig",
+    "image": "node:22-slim",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "Tencent-Cloud.coding-copilot"
+            ]
+        }
+    }
+}
