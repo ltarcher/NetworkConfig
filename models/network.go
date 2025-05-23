@@ -88,10 +88,9 @@ type WiFiHotspot struct {
 
 // HotspotConfig 表示移动热点配置信息
 type HotspotConfig struct {
-	SSID       string `json:"ssid"`     // 热点名称
-	Password   string `json:"password"` // 热点密码
-	MaxClients int    `json:"maxClients"`
-	Enabled    bool   `json:"enabled"` // 是否启用
+	SSID     string `json:"ssid"`     // 热点名称
+	Password string `json:"password"` // 热点密码
+	Enabled  bool   `json:"enabled"`  // 是否启用
 }
 
 // HotspotStatus 表示移动热点状态信息

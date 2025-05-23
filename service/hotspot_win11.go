@@ -73,7 +73,7 @@ func (m *Win11HotspotManager) Configure(config models.HotspotConfig) error {
 		return fmt.Errorf("密码长度必须在8-63个字符之间")
 	}
 
-	args := []string{"-NoProfile", "-NonInteractive", "-File", "hotspot.ps1", "configure", "-SSID", config.SSID, "-Password", config.Password, "-MaxClients", fmt.Sprintf("%d", config.MaxClients)}
+	args := []string{"-NoProfile", "-NonInteractive", "-File", "hotspot.ps1", "configure", "-SSID", config.SSID, "-Password", config.Password}
 	if config.Enabled {
 		args = append(args, "-Enable")
 	}

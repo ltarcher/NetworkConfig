@@ -92,7 +92,7 @@ const toggleHotspot = async () => {
         </el-descriptions-item>
         
         <el-descriptions-item label="最大客户端数">
-          {{ store.hotspotStatus.maxClients || 100 }}
+          {{ store.hotspotStatus.maxClients || 8 }}
         </el-descriptions-item>
         <el-descriptions-item label="当前客户端数">
           <el-tag :type="store.hotspotStatus.clientsCount > 0 ? 'success' : 'info'">
