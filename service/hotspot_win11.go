@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"networkconfig/models"
 	"os/exec"
+	"strings"
 )
 
 // Win11HotspotManager 管理Windows移动热点
@@ -12,6 +13,44 @@ type Win11HotspotManager struct {
 	debug bool
 	// PowerShell通用代码块，包含Windows Runtime assemblies加载和辅助函数
 	commonCode string
+	// 是否已初始化执行策略
+	policyInitialized bool
+}
+
+// 设置PowerShell执行策略
+func (m *Win11HotspotManager) setExecutionPolicy() error {
+	if m.policyInitialized {
+		return nil
+	}
+
+	// 首先检查当前执行策略
+	checkCmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		"Get-ExecutionPolicy -Scope CurrentUser")
+	output, err := checkCmd.CombinedOutput()
+	if err == nil && strings.Contains(string(output), "RemoteSigned") {
+		m.policyInitialized = true
+		return nil
+	}
+
+	// 尝试设置执行策略
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		"Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		if m.debug {
+			fmt.Printf("设置PowerShell执行策略失败: %v - %s\n", err, string(output))
+		}
+		return fmt.Errorf(`设置PowerShell执行策略失败: %v
+当前执行策略为Restricted，需要管理员权限修改。
+请使用管理员权限运行PowerShell并执行:
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, err)
+	}
+
+	m.policyInitialized = true
+	if m.debug {
+		fmt.Println("已设置PowerShell执行策略为RemoteSigned")
+	}
+	return nil
 }
 
 // 初始化PowerShell通用代码块
@@ -79,14 +118,27 @@ catch {
 
 // NewWin11HotspotManager 创建新的热点管理器
 func NewWin11HotspotManager(debug bool) *Win11HotspotManager {
-	return &Win11HotspotManager{
-		debug:      debug,
-		commonCode: psCommonCode,
+	manager := &Win11HotspotManager{
+		debug:            debug,
+		commonCode:       psCommonCode,
+		policyInitialized: false,
 	}
+	
+	// 尝试初始化执行策略，但不阻止创建实例
+	if err := manager.setExecutionPolicy(); err != nil && debug {
+		fmt.Printf("初始化PowerShell执行策略警告: %v\n", err)
+	}
+	
+	return manager
 }
 
 // GetStatus 获取热点状态
 func (m *Win11HotspotManager) GetStatus() (models.HotspotStatus, error) {
+	// 确保PowerShell执行策略已设置
+	if err := m.setExecutionPolicy(); err != nil {
+		return models.HotspotStatus{}, fmt.Errorf("获取热点状态前设置PowerShell执行策略失败: %v", err)
+	}
+
 	// 构建PowerShell脚本内容
 	psScript := fmt.Sprintf(`
 %s
@@ -132,7 +184,7 @@ catch {
 `, m.commonCode)
 
 	// 执行PowerShell脚本
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", psScript)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return models.HotspotStatus{}, fmt.Errorf("获取热点状态失败: %v", err)
@@ -170,6 +222,11 @@ catch {
 
 // Configure 配置热点
 func (m *Win11HotspotManager) Configure(config models.HotspotConfig) error {
+	// 确保PowerShell执行策略已设置
+	if err := m.setExecutionPolicy(); err != nil {
+		return fmt.Errorf("配置热点前设置PowerShell执行策略失败: %v", err)
+	}
+
 	// 验证参数
 	if config.SSID == "" {
 		return fmt.Errorf("SSID不能为空")
@@ -220,7 +277,7 @@ catch {
 `, m.commonCode, config.SSID, config.Password, config.Enabled)
 
 	// 执行PowerShell脚本
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", psScript)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("配置热点失败: %v", err)
@@ -253,6 +310,11 @@ func getActionWord(enable bool) string {
 
 // SetStatus 设置热点状态
 func (m *Win11HotspotManager) SetStatus(enable bool) error {
+	// 确保PowerShell执行策略已设置
+	if err := m.setExecutionPolicy(); err != nil {
+		return fmt.Errorf("设置热点状态前设置PowerShell执行策略失败: %v", err)
+	}
+
 	// 构建PowerShell脚本内容
 	action := "EnableAsync"
 	if !enable {
@@ -281,7 +343,7 @@ catch {
 `, m.commonCode, getActionWord(enable), action)
 
 	// 执行PowerShell脚本
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", psScript)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("设置热点状态失败: %v", err)
