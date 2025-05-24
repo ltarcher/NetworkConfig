@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// 检查移动热点状态
-	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-File", "hotspot.ps1", "status")
+	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-File", "hotspot.ps1", "status")
 	output, err = cmd.CombinedOutput()
 	if err == nil {
 		var status struct {
