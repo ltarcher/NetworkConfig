@@ -3,6 +3,7 @@
     <!-- 顶部标题 -->
     <el-header class="header">
       <h2>网络配置</h2>
+      <!--
       <div class="debug-toggle">
         <el-tooltip content="调试模式" placement="bottom">
           <el-switch
@@ -13,19 +14,36 @@
           />
         </el-tooltip>
       </div>
+      -->
     </el-header>
 
     <!-- 主体内容区域 -->
     <el-container class="main-container">
       <!-- 左侧接口列表 -->
-      <el-aside width="250px" class="aside">
+      <el-aside 
+        width="250px" 
+        class="aside"
+        :class="{'aside-collapsed': isAsideCollapsed}"
+        v-show="!isMobile || showAside">
         <el-card class="interface-list">
           <template #header>
             <div class="card-header">
               <span>网络接口列表</span>
-              <el-button type="primary" size="small" @click="refreshInterfaces">
-                刷新
-              </el-button>
+              <div class="aside-controls">
+                <el-button 
+                  v-if="isMobile"
+                  type="text" 
+                  size="small" 
+                  @click="toggleAside"
+                  :icon="isAsideCollapsed ? 'ArrowRight' : 'ArrowLeft'">
+                </el-button>
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  @click="refreshInterfaces">
+                  刷新
+                </el-button>
+              </div>
             </div>
           </template>
           <el-menu
@@ -249,6 +267,11 @@
       </el-main>
     </el-container>
 
+    <!-- 移动端浮动按钮 -->
+    <div class="float-button" v-if="isMobile && !showAside" @click="toggleAside">
+      <el-icon><Menu /></el-icon>
+    </div>
+
     <!-- 底部调试控制台 -->
     <el-footer v-show="debugMode" class="footer">
       <el-card class="debug-console">
@@ -294,6 +317,33 @@ import { useNetworkStore } from '../stores/network'
 import networkApi from '../utils/api'
 import { ElMessage, ElLoading } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
+
+// 响应式状态
+const isAsideCollapsed = ref(false)
+const windowWidth = ref(window.innerWidth)
+const showAside = ref(false)
+
+// 计算属性
+const isMobile = computed(() => windowWidth.value <= 768)
+
+// 方法
+const toggleAside = () => {
+  if(isMobile.value) {
+    showAside.value = !showAside.value
+  } else {
+    isAsideCollapsed.value = !isAsideCollapsed.value
+  }
+}
+
+// 窗口大小变化处理
+const handleResize = () => {
+  windowWidth.value = window.innerWidth
+  // 在移动设备上默认折叠侧边栏
+  if (isMobile.value) {
+    isAsideCollapsed.value = true
+    showAside.value = false
+  }
+}
 
 // 状态管理
 const store = useNetworkStore()
@@ -689,6 +739,10 @@ onMounted(() => {
     if (debugLogsRef.value) {
       debugLogsRef.value.addEventListener('scroll', handleScroll)
     }
+
+    // 添加窗口大小变化监听
+    window.addEventListener('resize', handleResize)
+    handleResize() // 初始化
   } catch (e) {
     console.error('Error in onMounted:', e)
   }
@@ -744,12 +798,86 @@ onUnmounted(() => {
   padding: 20px;
   width: 350px;
   flex-shrink: 0;
+  transition: all 0.3s ease;
 }
 
 .main {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* 响应式设计 - 移动端适配 */
+@media screen and (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+  
+  .aside {
+    width: 100%;
+    padding: 10px;
+    border-right: none;
+    border-bottom: 1px solid #dcdfe6;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  
+  .main {
+    padding: 10px;
+  }
+  
+  .config-form {
+    max-width: 100%;
+  }
+  
+  .interface-list :deep(.el-menu-item) {
+    padding: 0 10px;
+    font-size: 14px;
+  }
+  
+  .el-descriptions {
+    font-size: 14px;
+  }
+  
+  .el-form-item__label {
+    font-size: 14px;
+  }
+  
+  .el-input__inner {
+    font-size: 14px;
+  }
+  
+  .el-button {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  
+  .el-table {
+    font-size: 14px;
+    overflow-x: auto;
+    display: block;
+    width: 100%;
+  }
+  
+  .el-table__body-wrapper {
+    overflow-x: auto;
+  }
+}
+
+/* 平板设备适配 */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+  .aside {
+    width: 280px;
+    padding: 15px;
+  }
+  
+  .main {
+    padding: 15px;
+  }
+  
+  .config-form {
+    max-width: 90%;
+  }
 }
 
 .footer {
@@ -925,6 +1053,33 @@ onUnmounted(() => {
 .log-item.success {
   color: #67c23a;
   background-color: #f0f9eb;
+}
+
+/* 浮动按钮样式 */
+.float-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: var(--el-color-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.float-button:hover {
+  transform: scale(1.1);
+}
+
+.float-button:active {
+  transform: scale(0.95);
 }
 
 /* 调试控制台布局优化 */
