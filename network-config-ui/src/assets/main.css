@@ -33,3 +33,25 @@ a,
     padding: 0 2rem;
   }
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  #app {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    max-width: 100%;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  a, .green {
+    min-width: 48px;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

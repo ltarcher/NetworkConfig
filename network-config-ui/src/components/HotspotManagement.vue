@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useNetworkStore } from '../stores/network'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 
 const store = useNetworkStore()
 const hotspotFormRef = ref(null)
@@ -11,6 +11,7 @@ const hotspotConfig = ref({
 })
 const configuringHotspot = ref(false)
 const togglingHotspot = ref(false)
+const fetchingStatus = ref(false)
 
 // 热点表单验证规则
 const hotspotRules = {
@@ -26,6 +27,12 @@ const hotspotRules = {
 
 // 初始化热点状态
 onMounted(async () => {
+  const loading = ElLoading.service({
+    lock: true,
+    text: '正在获取热点状态...',
+    background: 'rgba(0, 0, 0, 0.7)'
+  })
+  
   try {
     await store.fetchHotspotStatus()
     if (store.hotspotStatus?.ssid) {
@@ -33,6 +40,8 @@ onMounted(async () => {
     }
   } catch (error) {
     ElMessage.error('获取热点状态失败: ' + error.message)
+  } finally {
+    loading.close()
   }
 })
 
