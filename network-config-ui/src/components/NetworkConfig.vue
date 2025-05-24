@@ -267,7 +267,7 @@
       </el-main>
     </el-container>
 
-    <!-- 移动端浮动按钮 -->
+    <!-- 移动端浮动按钮 - 只在侧边栏折叠时显示 -->
     <div class="float-button" v-if="isMobile && !showAside" @click="toggleAside">
       <el-icon><Menu /></el-icon>
     </div>
@@ -321,7 +321,7 @@ import { Connection } from '@element-plus/icons-vue'
 // 响应式状态
 const isAsideCollapsed = ref(false)
 const windowWidth = ref(window.innerWidth)
-const showAside = ref(false)
+const showAside = ref(true) // 移动端默认展开
 
 // 计算属性
 const isMobile = computed(() => windowWidth.value <= 768)
@@ -338,10 +338,9 @@ const toggleAside = () => {
 // 窗口大小变化处理
 const handleResize = () => {
   windowWidth.value = window.innerWidth
-  // 在移动设备上默认折叠侧边栏
+  // 移动端保持当前展开状态
   if (isMobile.value) {
     isAsideCollapsed.value = true
-    showAside.value = false
   }
 }
 
