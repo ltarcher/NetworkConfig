@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"networkconfig/models"
 	"os/exec"
-	"strings"
 )
 
 // Win11HotspotManager 管理Windows移动热点
@@ -36,23 +35,17 @@ try {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
     
     # Helper function to await WinRT async operations
-    function Await {
-        param(
-            [object]$WinRtTask,
-            [Type]$ResultType
-        )
-        
+    function Await($Task, $ResultType) {
         $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | 
             Where-Object { 
                 $_.Name -eq 'AsTask' -and 
                 $_.GetParameters().Count -eq 1 -and 
-                $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation``1' 
+                $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' 
             })[0]
         
         $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-        $netTask = $asTask.Invoke($null, @($WinRtTask))
+        $netTask = $asTask.Invoke($null, @($Task))
         $netTask.Wait(-1) | Out-Null
-        return $netTask.Result
     }
 
     # Get TetheringManager instance
@@ -95,7 +88,8 @@ func NewWin11HotspotManager(debug bool) *Win11HotspotManager {
 // GetStatus 获取热点状态
 func (m *Win11HotspotManager) GetStatus() (models.HotspotStatus, error) {
 	// 构建PowerShell脚本内容
-	psScript := m.commonCode + `
+	psScript := fmt.Sprintf(`
+%s
 try {
     $tetheringManager = Get-TetheringManager
     
@@ -135,7 +129,7 @@ catch {
         Error = $_.Exception.Message
     } | ConvertTo-Json
 }
-`
+`, m.commonCode)
 
 	// 执行PowerShell脚本
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
@@ -191,7 +185,8 @@ func (m *Win11HotspotManager) Configure(config models.HotspotConfig) error {
 	}
 
 	// 构建PowerShell脚本内容
-	psScript := m.commonCode + fmt.Sprintf(`
+	psScript := fmt.Sprintf(`
+%s
 try {
     $tetheringManager = Get-TetheringManager
     
@@ -222,7 +217,7 @@ catch {
         Error = $_.Exception.Message
     } | ConvertTo-Json
 }
-`, config.SSID, config.Password, config.Enabled)
+`, m.commonCode, config.SSID, config.Password, config.Enabled)
 
 	// 执行PowerShell脚本
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
@@ -248,6 +243,14 @@ catch {
 	return nil
 }
 
+// getActionWord 根据启用状态返回对应的动作词
+func getActionWord(enable bool) string {
+	if enable {
+		return "Enable"
+	}
+	return "Disable"
+}
+
 // SetStatus 设置热点状态
 func (m *Win11HotspotManager) SetStatus(enable bool) error {
 	// 构建PowerShell脚本内容
@@ -256,7 +259,8 @@ func (m *Win11HotspotManager) SetStatus(enable bool) error {
 		action = "DisableAsync"
 	}
 	
-	psScript := m.commonCode + fmt.Sprintf(`
+	psScript := fmt.Sprintf(`
+%s
 try {
     $tetheringManager = Get-TetheringManager
     
@@ -274,7 +278,7 @@ catch {
         Error = $_.Exception.Message
     } | ConvertTo-Json
 }
-`, enable ? "Enable" : "Disable", action)
+`, m.commonCode, getActionWord(enable), action)
 
 	// 执行PowerShell脚本
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
