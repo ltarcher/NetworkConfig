@@ -54,6 +54,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`, err)
 }
 
 // 初始化PowerShell通用代码块
+// 初始化PowerShell通用代码块 - 使用字符串拼接来处理反引号
 var psCommonCode = `
 # Set output encoding to UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -74,17 +75,23 @@ try {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
     
     # Helper function to await WinRT async operations
-    function Await($Task, $ResultType) {
+    function Await {
+        param(
+            [object]$WinRtTask,
+            [Type]$ResultType
+        )
+        
         $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | 
             Where-Object { 
                 $_.Name -eq 'AsTask' -and 
                 $_.GetParameters().Count -eq 1 -and 
-                $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' 
+                $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` + "`" + `1' 
             })[0]
         
         $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
-        $netTask = $asTask.Invoke($null, @($Task))
+        $netTask = $asTask.Invoke($null, @($WinRtTask))
         $netTask.Wait(-1) | Out-Null
+        return $netTask.Result
     }
 
     # Get TetheringManager instance
@@ -170,8 +177,8 @@ try {
         Enabled = $isEnabled
         SSID = $config.Ssid
         ClientsCount = $clientCount
-        Authentication = "WPA2PSK"
-        Encryption = "AES"
+        Authentication = $config.Authentication
+        Encryption = $config.Encryption
         MaxClientCount = $tetheringManager.MaxClientCount
     } | ConvertTo-Json
 }
@@ -247,21 +254,18 @@ func (m *Win11HotspotManager) Configure(config models.HotspotConfig) error {
 try {
     $tetheringManager = Get-TetheringManager
     
+    # Create new configuration
+    $config = New-Object Windows.Networking.NetworkOperators.NetworkOperatorTetheringAccessPointConfiguration
+    $config.Ssid = "%s"
+    $config.Passphrase = "%s"
+    
     # Configure the access point
-    $configuration = $tetheringManager.GetCurrentAccessPointConfiguration()
-    $configuration.Ssid = "%s"
-    $configuration.Passphrase = "%s"
+    $operation = $tetheringManager.ConfigureAccessPointAsync($config)
+    #$result = Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
     
-    # Apply the configuration
-    $configureTask = $tetheringManager.ConfigureAccessPointAsync($configuration)
-    Await $configureTask ([System.Threading.Tasks.VoidTaskResult])
-    
-    # Enable/disable the hotspot if requested
-    if ($true -eq %v) {
-        if ($tetheringManager.TetheringOperationalState -ne 1) {
-            $enableTask = $tetheringManager.EnableAsync()
-            Await $enableTask ([System.Threading.Tasks.VoidTaskResult])
-        }
+    if ($%v) {
+        $operation = $tetheringManager.StartTetheringAsync()
+        Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
     }
     
     @{
@@ -316,9 +320,9 @@ func (m *Win11HotspotManager) SetStatus(enable bool) error {
 	}
 
 	// 构建PowerShell脚本内容
-	action := "EnableAsync"
+	action := "StartTetheringAsync"
 	if !enable {
-		action = "DisableAsync"
+		action = "StopTetheringAsync"
 	}
 	
 	psScript := fmt.Sprintf(`
@@ -327,8 +331,8 @@ try {
     $tetheringManager = Get-TetheringManager
     
     # %s the hotspot
-    $task = $tetheringManager.%s()
-    Await $task ([System.Threading.Tasks.VoidTaskResult])
+    $operation = $tetheringManager.%s()
+    $result = Await -WinRtTask $operation -ResultType ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
     
     @{
         Success = $true
