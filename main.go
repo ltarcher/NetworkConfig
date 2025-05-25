@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"net"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"golang.org/x/sys/windows"
 )
 
 func main() {
@@ -54,27 +54,6 @@ func main() {
 			log.Println("警告: PowerShell执行策略为Restricted，可能影响热点管理功能。建议使用管理员权限运行以下命令：")
 			log.Println("Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned")
 		}
-	}
-
-	// 检查移动热点状态
-	cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-File", "hotspot.ps1", "status")
-	output, err = cmd.CombinedOutput()
-	if err == nil {
-		var status struct {
-			Success bool `json:"Success"`
-			Enabled bool `json:"Enabled"`
-		}
-		if err := json.Unmarshal(output, &status); err == nil {
-			if status.Success {
-				log.Printf("当前热点状态: %v", map[bool]string{true: "已启用", false: "已禁用"}[status.Enabled])
-			} else {
-				log.Printf("获取热点状态失败")
-			}
-		} else {
-			log.Printf("解析热点状态失败: %v", err)
-		}
-	} else {
-		log.Printf("检查热点状态失败: %v", err)
 	}
 
 	// 创建服务实例
@@ -135,19 +114,38 @@ func main() {
 
 // isAdmin 检查当前用户是否具有管理员权限
 func isAdmin() bool {
-	// 在Windows中，检查当前进程是否具有管理员权限
-	// 首先检查物理驱动器访问权限
-	if _, err := os.Open("\\\\.\\PHYSICALDRIVE0"); err == nil {
-		return true
+	// 使用windows包提供的API检查管理员权限
+	var sid *windows.SID
+	err := windows.AllocateAndInitializeSid(
+		&windows.SECURITY_NT_AUTHORITY,
+		2,
+		windows.SECURITY_BUILTIN_DOMAIN_RID,
+		windows.DOMAIN_ALIAS_RID_ADMINS,
+		0, 0, 0, 0, 0, 0,
+		&sid)
+	if err != nil {
+		log.Printf("初始化SID失败: %v", err)
+		// 回退到物理驱动器检查
+		if _, err := os.Open("\\\\.\\PHYSICALDRIVE0"); err == nil {
+			return true
+		}
+		return false
+	}
+	defer windows.FreeSid(sid)
+
+	// 检查当前进程令牌
+	token := windows.Token(0)
+	member, err := token.IsMember(sid)
+	if err != nil {
+		log.Printf("检查令牌成员关系失败: %v", err)
+		// 回退到物理驱动器检查
+		if _, err := os.Open("\\\\.\\PHYSICALDRIVE0"); err == nil {
+			return true
+		}
+		return false
 	}
 
-	// 检查netsh命令权限
-	cmd := exec.Command("netsh", "wlan", "show", "hostednetwork")
-	if err := cmd.Run(); err == nil {
-		return true
-	}
-
-	return false
+	return member
 }
 
 // corsMiddleware 处理跨域请求
