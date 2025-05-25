@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -56,6 +57,32 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 	}
 
 	log.Printf("快速获取 %d 个网络接口的信息", len(interfaces))
+	
+	// 对网卡列表进行排序，WLAN网卡优先
+	sort.Slice(interfaces, func(i, j int) bool {
+		name1 := strings.ToLower(interfaces[i].Name)
+		name2 := strings.ToLower(interfaces[j].Name)
+		
+		// 检查是否为WLAN网卡
+		isWLAN1 := strings.Contains(name1, "wlan") || 
+		          strings.Contains(name1, "wi-fi") || 
+		          strings.Contains(name1, "wireless")
+		isWLAN2 := strings.Contains(name2, "wlan") || 
+		          strings.Contains(name2, "wi-fi") || 
+		          strings.Contains(name2, "wireless")
+		
+		// WLAN网卡排在前面
+		if isWLAN1 && !isWLAN2 {
+			return true
+		}
+		if !isWLAN1 && isWLAN2 {
+			return false
+		}
+		
+		// 其他情况保持原顺序
+		return i < j
+	})
+	
 	return interfaces, nil
 }
 
