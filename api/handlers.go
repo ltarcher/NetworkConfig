@@ -42,7 +42,7 @@ func (h *NetworkHandler) RegisterRoutes(router *gin.Engine) {
 
 // GetInterfaces 获取所有网卡列表
 func (h *NetworkHandler) GetInterfaces(c *gin.Context) {
-	interfaces, err := h.networkService.GetInterfaces()
+	interfaces, err := h.networkService.GetInterfacesFast()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -50,7 +50,17 @@ func (h *NetworkHandler) GetInterfaces(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, interfaces)
+	// 转换为原有API格式以保持兼容
+	var result []models.Interface
+	for _, iface := range interfaces {
+		result = append(result, models.Interface{
+			Name:        iface.Name,
+			Status:      iface.Status,
+			Description: iface.Name, // 简单描述
+		})
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetInterface 获取指定网卡信息
