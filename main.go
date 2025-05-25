@@ -110,13 +110,25 @@ func main() {
 		port = "8080"
 	}
 
+	// 获取监听地址，优先级: 环境变量 > 默认值
+	host := os.Getenv("NETWORK_CONFIG_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
 	// 验证端口格式
 	if _, err := net.LookupPort("tcp", port); err != nil {
 		log.Fatalf("无效的端口号: %s", port)
 	}
 
-	log.Printf("服务器启动在 http://localhost:%s", port)
-	if err := router.Run(":" + port); err != nil {
+	// 验证主机地址格式
+	if ip := net.ParseIP(host); ip == nil {
+		log.Fatalf("无效的监听地址: %s", host)
+	}
+
+	listenAddr := net.JoinHostPort(host, port)
+	log.Printf("服务器启动在 http://%s", listenAddr)
+	if err := router.Run(listenAddr); err != nil {
 		log.Fatal("服务器启动失败: ", err)
 	}
 }
