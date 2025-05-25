@@ -11,8 +11,9 @@ import (
 
 // InterfaceFast 快速网卡信息结构
 type InterfaceFast struct {
-	Name   string `json:"name"`   // 网卡名称
-	Status string `json:"status"` // 网卡状态(up/down)
+	Name        string `json:"name"`         // 网卡名称
+	Status      string `json:"status"`      // 网卡状态(up/down)
+	ProductName string `json:"productName"`  // 网卡产品名称
 }
 
 // GetInterfacesFast 快速获取网卡列表
@@ -36,20 +37,52 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 		case "windows":
 			if strings.Contains(iface.Name, "Virtual") || 
 			   strings.Contains(strings.ToLower(iface.Name), "vethernet") ||
-			   strings.Contains(strings.ToLower(iface.Name), "wireguard") {
+			   strings.Contains(strings.ToLower(iface.Name), "wireguard") ||
+			   strings.Contains(strings.ToLower(iface.Name), "virtualbox") ||
+			   strings.Contains(strings.ToLower(iface.Name), "vmware") ||
+			   strings.Contains(strings.ToLower(iface.Name), "vpn") {
 				continue
 			}
 		case "linux":
 			if strings.HasPrefix(iface.Name, "docker") || 
-			   strings.HasPrefix(iface.Name, "veth") {
+			   strings.HasPrefix(iface.Name, "veth") ||
+			   strings.HasPrefix(iface.Name, "br-") ||
+			   strings.HasPrefix(iface.Name, "virbr") ||
+			   strings.HasPrefix(iface.Name, "tun") {
 				continue
 			}
 		}
 
-		interfaces = append(interfaces, InterfaceFast{
+		// 跳过MAC地址为空的无效网卡
+		if iface.HardwareAddr == nil || len(iface.HardwareAddr) == 0 {
+			log.Printf("跳过MAC地址为空的接口: %s", iface.Name)
+			continue
+		}
+
+		// 跳过未启用的接口（除非在调试模式）
+		// if !s.Debug && iface.Flags&net.FlagUp == 0 {
+		//	log.Printf("跳过未启用的接口: %s", iface.Name)
+		//	continue
+		//}
+
+		ifaceInfo := InterfaceFast{
 			Name:   iface.Name,
 			Status: getInterfaceStatusFast(iface.Flags),
-		})
+		}
+		// 获取硬件和驱动信息
+		hardware, err := getHardwareInfo(iface.Name)
+		if err != nil {
+			log.Printf("获取接口 %s 硬件信息失败: %v", iface.Name, err)
+		} else {
+			log.Printf("接口 %s 硬件信息: %+v", iface.Name, hardware)
+			ifaceInfo.ProductName = hardware.ProductName
+			if hardware.ProductName == "" {
+				log.Printf("警告: 接口 %s 的产品名称为空，忽略。", iface.Name)
+				continue
+			}
+		}
+
+		interfaces = append(interfaces, ifaceInfo)
 	}
 
 	if len(interfaces) == 0 {
