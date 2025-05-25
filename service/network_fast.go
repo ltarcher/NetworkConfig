@@ -34,6 +34,7 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 		switch runtime.GOOS {
 		case "windows":
 			if strings.Contains(iface.Name, "Virtual") || 
+			   strings.Contains(strings.ToLower(iface.Name), "vethernet") ||
 			   strings.Contains(strings.ToLower(iface.Name), "wireguard") {
 				continue
 			}
