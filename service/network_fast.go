@@ -11,9 +11,9 @@ import (
 
 // InterfaceFast 快速网卡信息结构
 type InterfaceFast struct {
-	Name        string `json:"name"`         // 网卡名称
+	Name        string `json:"name"`        // 网卡名称
 	Status      string `json:"status"`      // 网卡状态(up/down)
-	ProductName string `json:"productName"`  // 网卡产品名称
+	ProductName string `json:"productName"` // 网卡产品名称
 }
 
 // GetInterfacesFast 快速获取网卡列表
@@ -35,20 +35,20 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 		// 根据操作系统跳过特定虚拟接口
 		switch runtime.GOOS {
 		case "windows":
-			if strings.Contains(iface.Name, "Virtual") || 
-			   strings.Contains(strings.ToLower(iface.Name), "vethernet") ||
-			   strings.Contains(strings.ToLower(iface.Name), "wireguard") ||
-			   strings.Contains(strings.ToLower(iface.Name), "virtualbox") ||
-			   strings.Contains(strings.ToLower(iface.Name), "vmware") ||
-			   strings.Contains(strings.ToLower(iface.Name), "vpn") {
+			if strings.Contains(iface.Name, "Virtual") ||
+				strings.Contains(strings.ToLower(iface.Name), "vethernet") ||
+				strings.Contains(strings.ToLower(iface.Name), "wireguard") ||
+				strings.Contains(strings.ToLower(iface.Name), "virtualbox") ||
+				strings.Contains(strings.ToLower(iface.Name), "vmware") ||
+				strings.Contains(strings.ToLower(iface.Name), "vpn") {
 				continue
 			}
 		case "linux":
-			if strings.HasPrefix(iface.Name, "docker") || 
-			   strings.HasPrefix(iface.Name, "veth") ||
-			   strings.HasPrefix(iface.Name, "br-") ||
-			   strings.HasPrefix(iface.Name, "virbr") ||
-			   strings.HasPrefix(iface.Name, "tun") {
+			if strings.HasPrefix(iface.Name, "docker") ||
+				strings.HasPrefix(iface.Name, "veth") ||
+				strings.HasPrefix(iface.Name, "br-") ||
+				strings.HasPrefix(iface.Name, "virbr") ||
+				strings.HasPrefix(iface.Name, "tun") {
 				continue
 			}
 		}
@@ -80,6 +80,10 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 				log.Printf("警告: 接口 %s 的产品名称为空，忽略。", iface.Name)
 				continue
 			}
+			if strings.Contains(ifaceInfo.ProductName, "KM-TEST") {
+				log.Printf("警告: 接口 %s 的产品名称包含关键字 KM-TEST，忽略。", iface.Name)
+				continue
+			}
 		}
 
 		interfaces = append(interfaces, ifaceInfo)
@@ -90,20 +94,20 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 	}
 
 	log.Printf("快速获取 %d 个网络接口的信息", len(interfaces))
-	
+
 	// 对网卡列表进行排序，WLAN网卡优先
 	sort.Slice(interfaces, func(i, j int) bool {
 		name1 := strings.ToLower(interfaces[i].Name)
 		name2 := strings.ToLower(interfaces[j].Name)
-		
+
 		// 检查是否为WLAN网卡
-		isWLAN1 := strings.Contains(name1, "wlan") || 
-		          strings.Contains(name1, "wi-fi") || 
-		          strings.Contains(name1, "wireless")
-		isWLAN2 := strings.Contains(name2, "wlan") || 
-		          strings.Contains(name2, "wi-fi") || 
-		          strings.Contains(name2, "wireless")
-		
+		isWLAN1 := strings.Contains(name1, "wlan") ||
+			strings.Contains(name1, "wi-fi") ||
+			strings.Contains(name1, "wireless")
+		isWLAN2 := strings.Contains(name2, "wlan") ||
+			strings.Contains(name2, "wi-fi") ||
+			strings.Contains(name2, "wireless")
+
 		// WLAN网卡排在前面
 		if isWLAN1 && !isWLAN2 {
 			return true
@@ -111,11 +115,11 @@ func (s *NetworkService) GetInterfacesFast() ([]InterfaceFast, error) {
 		if !isWLAN1 && isWLAN2 {
 			return false
 		}
-		
+
 		// 其他情况保持原顺序
 		return i < j
 	})
-	
+
 	return interfaces, nil
 }
 

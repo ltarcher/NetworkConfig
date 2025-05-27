@@ -107,6 +107,11 @@ func (s *NetworkService) GetInterfaces() ([]models.Interface, error) {
 			continue
 		}
 
+		if strings.Compare(ifaceInfo.Hardware.ProductName, "KM-TEST") == 0 {
+			log.Printf("跳过产品名称包含关键字 KM-TEST 的接口: %s", iface.Name)
+			continue
+		}
+
 		interfaces = append(interfaces, ifaceInfo)
 	}
 
