@@ -16,11 +16,11 @@ func main() {
 
 	// 定义子命令
 	statusCmd := flag.NewFlagSet("status", flag.ExitOnError)
-	
+
 	enableCmd := flag.NewFlagSet("enable", flag.ExitOnError)
-	
+
 	disableCmd := flag.NewFlagSet("disable", flag.ExitOnError)
-	
+
 	configureCmd := flag.NewFlagSet("configure", flag.ExitOnError)
 	ssid := configureCmd.String("ssid", "", "热点SSID名称")
 	password := configureCmd.String("password", "", "热点密码")
@@ -98,6 +98,6 @@ func printHotspotStatus(status models.HotspotStatus) {
 	fmt.Printf("  SSID: %s\n", status.SSID)
 	fmt.Printf("  认证方式: %s\n", status.Authentication)
 	fmt.Printf("  加密方式: %s\n", status.Encryption)
-	fmt.Printf("  最大客户端数: %d\n", status.MaxClients)
+	fmt.Printf("  最大客户端数: %d\n", status.MaxClientCount)
 	fmt.Printf("  当前连接客户端数: %d\n", status.ClientsCount)
 }
