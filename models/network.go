@@ -95,10 +95,12 @@ type HotspotConfig struct {
 
 // HotspotStatus 表示移动热点状态信息
 type HotspotStatus struct {
-	Enabled        bool   `json:"enabled"`        // 是否启用
-	SSID           string `json:"ssid"`           // 热点名称
-	MaxClients     int    `json:"max_clients"`    // 最大客户端数
-	Authentication string `json:"authentication"` // 认证方式
-	Encryption     string `json:"encryption"`     // 加密方式
-	ClientsCount   int    `json:"clients_count"`  // 当前连接的客户端数
+	Success        bool   `json:"Success"`        // 操作是否成功
+	Error          string `json:"Error"`          // 错误信息
+	Enabled        bool   `json:"Enabled"`        // 是否启用
+	SSID           string `json:"SSID"`           // 热点名称
+	MaxClientCount int    `json:"MaxClientCount"` // 最大客户端数
+	Authentication string `json:"Authentication"` // 认证方式
+	Encryption     string `json:"Encryption"`     // 加密方式
+	ClientsCount   int    `json:"ClientsCount"`   // 当前连接的客户端数
 }

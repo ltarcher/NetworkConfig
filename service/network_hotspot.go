@@ -24,9 +24,9 @@ func isWin11OrLater() bool {
 	}
 
 	var version struct {
-		Major  int `json:"Major"`
-		Minor  int `json:"Minor"`
-		Build  int `json:"Build"`
+		Major    int `json:"Major"`
+		Minor    int `json:"Minor"`
+		Build    int `json:"Build"`
 		Revision int `json:"Revision"`
 	}
 	if err := json.Unmarshal(output, &version); err != nil {
@@ -40,7 +40,7 @@ func isWin11OrLater() bool {
 // runHotspotDiagnostic 运行热点诊断
 func (s *NetworkService) runHotspotDiagnostic() {
 	log.Println("运行热点诊断...")
-	
+
 	// 运行诊断命令
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-File", "hotspot.ps1", "diagnostic")
 	output, err := cmd.CombinedOutput()
@@ -48,10 +48,10 @@ func (s *NetworkService) runHotspotDiagnostic() {
 		log.Printf("运行热点诊断失败: %v", err)
 		return
 	}
-	
+
 	// 输出诊断信息
 	log.Printf("热点诊断信息: %s", string(output))
-	
+
 	// 检查系统环境
 	s.checkSystemEnvironment()
 }
@@ -68,14 +68,14 @@ func (s *NetworkService) checkSystemEnvironment() {
 			log.Println("警告: PowerShell执行策略为Restricted，可能影响热点管理功能")
 		}
 	}
-	
+
 	// 检查网络适配器状态
 	cmd = exec.Command("powershell", "-Command", "Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ConvertTo-Json")
 	output, err = cmd.CombinedOutput()
 	if err == nil {
 		log.Printf("活动网络适配器: %s", string(output))
 	}
-	
+
 	// 检查移动热点服务
 	cmd = exec.Command("powershell", "-Command", "Get-Service -Name SharedAccess | Select-Object Name, Status | ConvertTo-Json")
 	output, err = cmd.CombinedOutput()
@@ -92,7 +92,7 @@ func (s *NetworkService) GetHotspotStatus() (models.HotspotStatus, error) {
 		if err != nil && s.Debug {
 			log.Printf("Windows 11 API获取热点状态失败: %v, 尝试运行诊断", err)
 			s.runHotspotDiagnostic()
-			
+
 			// 尝试使用netsh命令作为备选方案
 			log.Println("尝试使用netsh命令获取热点状态...")
 			return s.getHotspotStatusWithNetsh()
@@ -119,7 +119,9 @@ func (s *NetworkService) getHotspotStatusWithNetsh() (models.HotspotStatus, erro
 	}
 
 	// 解析输出
-	status := models.HotspotStatus{}
+	status := models.HotspotStatus{
+		Success: true, // 如果能执行到这里，说明命令执行成功
+	}
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -138,7 +140,7 @@ func (s *NetworkService) getHotspotStatusWithNetsh() (models.HotspotStatus, erro
 			parts := strings.Split(line, ":")
 			if len(parts) > 1 {
 				if maxClients, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					status.MaxClients = maxClients
+					status.MaxClientCount = maxClients
 				}
 			}
 		} else if strings.Contains(line, "Authentication") || strings.Contains(line, "身份验证") {
@@ -173,7 +175,7 @@ func (s *NetworkService) ConfigureHotspot(config models.HotspotConfig) error {
 		if err != nil && s.Debug {
 			log.Printf("Windows 11 API配置热点失败: %v, 尝试运行诊断", err)
 			s.runHotspotDiagnostic()
-			
+
 			// 尝试使用netsh命令作为备选方案
 			log.Println("尝试使用netsh命令配置热点...")
 			return s.configureHotspotWithNetsh(config)
@@ -231,7 +233,7 @@ func (s *NetworkService) SetHotspotStatus(enable bool) error {
 		if err != nil && s.Debug {
 			log.Printf("Windows 11 API设置热点状态失败: %v, 尝试运行诊断", err)
 			s.runHotspotDiagnostic()
-			
+
 			// 尝试使用netsh命令作为备选方案
 			log.Println("尝试使用netsh命令设置热点状态...")
 			return s.setHotspotStatusWithNetsh(enable)

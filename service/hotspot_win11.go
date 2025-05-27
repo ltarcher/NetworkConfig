@@ -126,16 +126,16 @@ catch {
 // NewWin11HotspotManager 创建新的热点管理器
 func NewWin11HotspotManager(debug bool) *Win11HotspotManager {
 	manager := &Win11HotspotManager{
-		debug:            debug,
-		commonCode:       psCommonCode,
+		debug:             debug,
+		commonCode:        psCommonCode,
 		policyInitialized: false,
 	}
-	
+
 	// 尝试初始化执行策略，但不阻止创建实例
 	if err := manager.setExecutionPolicy(); err != nil && debug {
 		fmt.Printf("初始化PowerShell执行策略警告: %v\n", err)
 	}
-	
+
 	return manager
 }
 
@@ -218,9 +218,11 @@ catch {
 	}
 
 	return models.HotspotStatus{
+		Success:        result.Success,
+		Error:          result.Error,
 		Enabled:        result.Enabled,
 		SSID:           result.SSID,
-		MaxClients:     result.MaxClientCount,
+		MaxClientCount: result.MaxClientCount,
 		Authentication: result.Authentication,
 		Encryption:     result.Encryption,
 		ClientsCount:   result.ClientsCount,
@@ -324,7 +326,7 @@ func (m *Win11HotspotManager) SetStatus(enable bool) error {
 	if !enable {
 		action = "StopTetheringAsync"
 	}
-	
+
 	psScript := fmt.Sprintf(`
 %s
 try {

@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { useNetworkStore } from '../stores/network'
 
 // 创建axios实例
 const api = axios.create({
@@ -7,19 +6,28 @@ const api = axios.create({
   timeout: 180000
 })
 
+// 创建调试日志函数
+const createDebugLogger = (store) => {
+  return {
+    info: (message) => store?.addDebugLog?.(message, 'info'),
+    success: (message) => store?.addDebugLog?.(message, 'success'),
+    error: (message) => store?.addDebugLog?.(message, 'error')
+  }
+}
+
 // 请求拦截器
 api.interceptors.request.use(
   config => {
-    const store = useNetworkStore()
-    store.addDebugLog(`Request: ${config.method.toUpperCase()} ${config.url}`, 'info')
+    const logger = createDebugLogger(config.store)
+    logger.info(`Request: ${config.method.toUpperCase()} ${config.url}`)
     if (config.data) {
-      store.addDebugLog(`Request Body: ${JSON.stringify(config.data, null, 2)}`, 'info')
+      logger.info(`Request Body: ${JSON.stringify(config.data, null, 2)}`)
     }
     return config
   },
   error => {
-    const store = useNetworkStore()
-    store.addDebugLog(`Request Error: ${error.message}`, 'error')
+    const logger = createDebugLogger(error.config?.store)
+    logger.error(`Request Error: ${error.message}`)
     return Promise.reject(error)
   }
 )
@@ -27,16 +35,16 @@ api.interceptors.request.use(
 // 响应拦截器
 api.interceptors.response.use(
   response => {
-    const store = useNetworkStore()
-    store.addDebugLog(`Response: ${response.status} ${response.statusText}`, 'success')
-    store.addDebugLog(`Response Data: ${JSON.stringify(response.data, null, 2)}`, 'info')
+    const logger = createDebugLogger(response.config.store)
+    logger.success(`Response: ${response.status} ${response.statusText}`)
+    logger.info(`Response Data: ${JSON.stringify(response.data, null, 2)}`)
     return response
   },
   error => {
-    const store = useNetworkStore()
-    store.addDebugLog(`Response Error: ${error.message}`, 'error')
+    const logger = createDebugLogger(error.config?.store)
+    logger.error(`Response Error: ${error.message}`)
     if (error.response) {
-      store.addDebugLog(`Error Data: ${JSON.stringify(error.response.data, null, 2)}`, 'error')
+      logger.error(`Error Data: ${JSON.stringify(error.response.data, null, 2)}`)
     }
     return Promise.reject(error)
   }
@@ -122,13 +130,46 @@ export const networkApi = {
       })
       
       // 更详细的响应验证
-      if (!response.data || typeof response.data.enabled !== 'boolean') {
-        console.error('Invalid response:', response.data)
-        throw new Error('热点状态响应格式无效')
+      if (!response.data) {
+        console.error('Empty response data')
+        throw new Error('热点状态响应为空')
+      }
+
+      const {
+        Success,
+        Error: errorMsg,
+        Enabled,
+        SSID,
+        ClientsCount,
+        Authentication,
+        Encryption,
+        MaxClientCount
+      } = response.data
+
+      // 验证必要字段
+      if (typeof Success !== 'boolean') {
+        console.error('Invalid Success field:', Success)
+        throw new Error('响应状态字段无效')
+      }
+
+      if (!Success && errorMsg) {
+        throw new Error(errorMsg)
+      }
+
+      // 验证并规范化响应数据
+      const normalizedResponse = {
+        enabled: typeof Enabled === 'boolean' ? Enabled : false,
+        ssid: SSID || '',
+        clientsCount: typeof ClientsCount === 'number' ? 
+          Math.max(0, Math.floor(ClientsCount)) : 0,
+        authentication: Authentication || '',
+        encryption: Encryption || '',
+        maxClientCount: typeof MaxClientCount === 'number' ? 
+          Math.max(0, Math.floor(MaxClientCount)) : 0
       }
       
-      console.log('Hotspot status response:', response.data)
-      return response.data
+      console.log('Normalized hotspot status:', normalizedResponse)
+      return normalizedResponse
     } catch (error) {
       // 更详细的错误信息提取
       const serverMessage = error.response?.data?.message || error.message
