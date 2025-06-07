@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"net"
 	"networkconfig/api"
@@ -13,11 +14,31 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"golang.org/x/sys/windows"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
-	// 设置日志格式
+	// 确保logs目录存在
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		log.Fatal("Failed to create logs directory:", err)
+	}
+
+	// 配置日志输出
+	logWriter := &lumberjack.Logger{
+		Filename:   "logs/app.log", // 日志文件路径
+		MaxSize:    10,             // 每个日志文件最大10MB
+		MaxBackups: 0,              // 保留所有旧文件
+		MaxAge:     30,             // 保留30天
+		Compress:   true,           // 压缩旧文件
+	}
+
+	// 配置标准日志
+	log.SetOutput(io.MultiWriter(os.Stdout, logWriter))
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
+	// 配置gin的日志输出
+	gin.DefaultWriter = io.MultiWriter(os.Stdout, logWriter)
+	gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, logWriter)
 
 	// 读取配置，优先级: 命令行参数 > .env > 默认值
 	var (
