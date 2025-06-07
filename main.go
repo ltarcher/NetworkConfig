@@ -64,6 +64,10 @@ func main() {
 		log.Println("警告: 调试模式已启用，网卡列表将不过滤")
 	}
 
+	// 启动热点监控服务
+	networkService.StartHotspotMonitor()
+	defer networkService.StopHotspotMonitor()
+
 	// 设置gin模式
 	gin.SetMode(gin.ReleaseMode)
 

@@ -23,14 +23,34 @@ var (
 
 // NetworkService 处理网络配置相关的操作
 type NetworkService struct {
-	Debug bool // 调试模式开关，true时获取网卡列表不进行过滤
+	Debug          bool            // 调试模式开关，true时获取网卡列表不进行过滤
+	hotspotMonitor *HotspotMonitor // 热点监控服务
 }
 
 // NewNetworkService 创建新的NetworkService实例
 // debug参数控制调试模式，true时获取网卡列表不进行过滤
 func NewNetworkService(debug bool) *NetworkService {
-	return &NetworkService{
+	service := &NetworkService{
 		Debug: debug,
+	}
+
+	// 创建热点监控服务
+	service.hotspotMonitor = NewHotspotMonitor(service, debug)
+
+	return service
+}
+
+// StartHotspotMonitor 启动热点监控服务
+func (s *NetworkService) StartHotspotMonitor() {
+	if s.hotspotMonitor != nil {
+		s.hotspotMonitor.Start()
+	}
+}
+
+// StopHotspotMonitor 停止热点监控服务
+func (s *NetworkService) StopHotspotMonitor() {
+	if s.hotspotMonitor != nil {
+		s.hotspotMonitor.Stop()
 	}
 }
 
