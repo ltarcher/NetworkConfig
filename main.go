@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -16,6 +17,9 @@ import (
 	"golang.org/x/sys/windows"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+// 版本信息，将在编译时通过 -ldflags 注入
+var version string
 
 func main() {
 	// 确保logs目录存在
@@ -42,12 +46,23 @@ func main() {
 
 	// 读取配置，优先级: 命令行参数 > .env > 默认值
 	var (
-		port  string
-		debug bool
+		port        string
+		debug       bool
+		showVersion bool
 	)
 	flag.StringVar(&port, "port", "", "服务器监听端口")
 	flag.BoolVar(&debug, "debug", false, "启用调试模式(不过滤网卡)")
+	flag.BoolVar(&showVersion, "v", false, "显示版本信息")
 	flag.Parse()
+
+	// 如果指定了版本标志，显示版本信息并退出
+	if showVersion {
+		if version == "" {
+			version = "开发版本"
+		}
+		fmt.Printf("Version: %s\n", version)
+		os.Exit(0)
+	}
 
 	// 如果没有命令行参数，尝试从.env读取
 	if port == "" || !debug {
