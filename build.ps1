@@ -12,9 +12,10 @@ if ($LASTEXITCODE -ne 0) {
 
 # 组合构建时间和commit id
 $version = "$buildTime-$commitId"
+Write-Host "Version string: $version"
 
 # 构建可执行文件
-$buildCmd = "go build -ldflags ""-X main.version=$version"" -o release/NetworkConfig.exe"
+$buildCmd = "go build -ldflags `"-X main.version=$version`" -o release/NetworkConfig.exe"
 Write-Host "Building with command: $buildCmd"
 Invoke-Expression $buildCmd
 
