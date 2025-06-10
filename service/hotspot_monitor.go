@@ -109,7 +109,8 @@ func (m *HotspotMonitor) recoverHotspot() {
 	// 先尝试停止热点
 	if err := m.networkService.SetHotspotStatus(false); err != nil {
 		log.Printf("停止热点失败: %v", err)
-		return
+		// 停止热点失败忽略，继续尝试启动热点
+		// return
 	}
 
 	// 等待一段时间
