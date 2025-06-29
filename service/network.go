@@ -1841,18 +1841,40 @@ func (s *NetworkService) ConnectWiFi(interfaceName, ssid, password string) error
 }
 
 func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string) error {
+	// 记录原始SSID用于日志
+	originalSSID := ssid
+
+	// 确保SSID使用正确的编码
+	log.Printf("处理WiFi连接请求，原始SSID: %q", ssid)
+
+	// 使用DecodeToUTF8确保SSID是UTF-8编码
+	ssidBytes := []byte(ssid)
+	decodedSSID, err := DecodeToUTF8(ssidBytes)
+	if err != nil {
+		log.Printf("SSID编码转换失败: %v，将使用原始SSID", err)
+	} else {
+		ssid = string(decodedSSID)
+		log.Printf("转换后的SSID: %q", ssid)
+	}
+
+	// 构建连接命令
 	cmd := exec.Command("netsh", "wlan", "connect",
 		fmt.Sprintf("name=%s", ssid),
 		fmt.Sprintf("interface=%s", interfaceName))
 
 	if password != "" {
-		// 先删除已有配置文件
-		_ = exec.Command("netsh", "wlan", "delete", "profile",
-			fmt.Sprintf("name=%s", ssid),
-			fmt.Sprintf("interface=%s", interfaceName)).Run()
+		log.Printf("WiFi需要密码，创建配置文件")
 
-		// 创建XML配置文件
-		profile := fmt.Sprintf(`<?xml version="1.0"?>
+		// 先删除已有配置文件
+		deleteCmd := exec.Command("netsh", "wlan", "delete", "profile",
+			fmt.Sprintf("name=%s", ssid),
+			fmt.Sprintf("interface=%s", interfaceName))
+		if out, err := deleteCmd.CombinedOutput(); err != nil {
+			log.Printf("删除旧配置文件失败(可能不存在): %s", string(out))
+		}
+
+		// 创建XML配置文件，确保使用UTF-8编码
+		profile := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
 	<name>%s</name>
 	<SSIDConfig>
@@ -1878,33 +1900,55 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 	</MSM>
 </WLANProfile>`, ssid, ssid, password)
 
-		// 写入临时文件
+		// 写入临时文件，确保使用UTF-8编码
 		tmpFile, err := os.CreateTemp("", "wifi_*.xml")
 		if err != nil {
 			return fmt.Errorf("创建临时文件失败: %v", err)
 		}
 		defer os.Remove(tmpFile.Name())
 
+		// 写入UTF-8 BOM标记，确保Windows正确识别UTF-8编码
+		utf8BOM := []byte{0xEF, 0xBB, 0xBF}
+		if _, err := tmpFile.Write(utf8BOM); err != nil {
+			return fmt.Errorf("写入UTF-8 BOM失败: %v", err)
+		}
+
 		if _, err := tmpFile.WriteString(profile); err != nil {
 			return fmt.Errorf("写入配置文件失败: %v", err)
 		}
 		tmpFile.Close()
 
+		log.Printf("WiFi配置文件已创建: %s", tmpFile.Name())
+
 		// 添加配置文件
 		addCmd := exec.Command("netsh", "wlan", "add", "profile",
 			fmt.Sprintf("filename=%s", tmpFile.Name()),
 			fmt.Sprintf("interface=%s", interfaceName))
+
+		// 设置命令环境变量，确保正确处理UTF-8
+		addCmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
 		if out, err := addCmd.CombinedOutput(); err != nil {
+			log.Printf("添加配置文件失败，输出: %s", string(out))
 			return fmt.Errorf("添加配置文件失败: %s, %v", string(out), err)
 		}
+
+		log.Printf("WiFi配置文件已添加")
 	}
 
 	// 执行连接命令
+	log.Printf("执行WiFi连接命令: netsh wlan connect name=%s interface=%s", ssid, interfaceName)
+
+	// 设置命令环境变量，确保正确处理UTF-8
+	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Printf("WiFi连接失败，输出: %s", string(out))
 		return fmt.Errorf("连接失败: %s, %v", string(out), err)
 	}
 
+	log.Printf("WiFi连接命令执行成功，原始SSID: %q", originalSSID)
 	return nil
 }
 
