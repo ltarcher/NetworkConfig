@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,11 +13,21 @@ import (
 	"networkconfig/models"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// bytesToHexString 将字节数组转换为十六进制字符串
+func bytesToHexString(b []byte) string {
+	var buf bytes.Buffer
+	for _, b := range b {
+		buf.WriteString(fmt.Sprintf("%02X", b))
+	}
+	return buf.String()
+}
 
 // 定义服务错误
 var (
@@ -1882,9 +1893,62 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 		}
 	}
 
-	// 构建连接命令，不使用双引号，直接使用解码后的SSID
+	// 先扫描可用的WiFi网络
+	log.Printf("开始扫描可用的WiFi网络...")
+	scanCmd := exec.Command("netsh", "wlan", "show", "networks")
+
+	scanOutput, err := scanCmd.CombinedOutput()
+	if err != nil {
+		log.Printf("扫描WiFi网络失败: %v, 输出: %s", err, string(scanOutput))
+		return fmt.Errorf("扫描WiFi网络失败: %v", err)
+	}
+
+	// 将扫描输出转换为UTF-8编码
+	decodedOutput, err := DecodeToUTF8(scanOutput)
+	if err != nil {
+		log.Printf("转换扫描输出编码失败: %v", err)
+	}
+	scanOutputStr := string(decodedOutput)
+	log.Printf("WiFi扫描原始输出:\n%s", scanOutputStr)
+
+	// 检查SSID是否在可用网络列表中
+	log.Printf("开始检查目标网络 %q 是否在可用列表中...", ssid)
+	available := false
+	var foundNetworks []string
+
+	// 使用正则表达式提取SSID
+	ssidRegex := regexp.MustCompile(`SSID\s+\d+\s*:\s*(.+)`)
+	matches := ssidRegex.FindAllStringSubmatch(scanOutputStr, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			networkSSID := strings.TrimSpace(match[1])
+			// 如果SSID被引号包围，去除引号
+			networkSSID = strings.Trim(networkSSID, "\"")
+			foundNetworks = append(foundNetworks, networkSSID)
+			log.Printf("发现网络: %q (原始格式)", networkSSID)
+
+			// 尝试不同的编码方式进行比较
+			if networkSSID == ssid {
+				available = true
+				log.Printf("找到完全匹配的目标网络: %q", ssid)
+				break
+			}
+		}
+	}
+
+	if !available {
+		log.Printf("目标WiFi网络 %q 不在可用范围内", ssid)
+		log.Printf("可用网络列表: %v", foundNetworks)
+		log.Printf("请检查网络名称是否正确，以及网络是否在范围内")
+		return fmt.Errorf("WiFi网络 %q 不在可用范围内", ssid)
+	}
+
+	log.Printf("目标网络 %q 在可用范围内，准备连接...", ssid)
+
+	// 构建连接命令，使用双引号包围SSID以处理特殊字符
 	cmd := exec.Command("netsh", "wlan", "connect",
-		fmt.Sprintf("name=%s", ssid),
+		fmt.Sprintf("name=\"%s\"", ssid),
 		fmt.Sprintf("interface=%s", interfaceName))
 
 	if password != "" {
@@ -1905,16 +1969,20 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 		log.Printf("XML转义后的SSID: %q", xmlEscapedSSID)
 
 		// 创建XML配置文件，确保使用UTF-8编码
+		// 使用更灵活的安全设置，支持多种加密类型
 		profile := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
 	<name>%s</name>
 	<SSIDConfig>
 		<SSID>
+			<hex>%s</hex>
 			<name>%s</name>
 		</SSID>
+		<nonBroadcast>false</nonBroadcast>
 	</SSIDConfig>
 	<connectionType>ESS</connectionType>
 	<connectionMode>auto</connectionMode>
+	<autoSwitch>false</autoSwitch>
 	<MSM>
 		<security>
 			<authEncryption>
@@ -1929,7 +1997,12 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 			</sharedKey>
 		</security>
 	</MSM>
-</WLANProfile>`, xmlEscapedSSID, xmlEscapedSSID, xmlEscapedPassword)
+	<MacRandomization xmlns="http://www.microsoft.com/networking/WLAN/profile/v3">
+		<enableRandomization>false</enableRandomization>
+	</MacRandomization>
+</WLANProfile>`, xmlEscapedSSID, bytesToHexString([]byte(ssid)), xmlEscapedSSID, xmlEscapedPassword)
+
+		log.Printf("生成的WiFi配置文件内容:\n%s", profile)
 
 		// 写入临时文件，确保使用UTF-8编码
 		tmpFile, err := os.CreateTemp("", "wifi_*.xml")
@@ -1959,27 +2032,71 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 		// 设置命令环境变量，确保正确处理UTF-8
 		addCmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
 
-		if out, err := addCmd.CombinedOutput(); err != nil {
-			log.Printf("添加配置文件失败，输出: %s", string(out))
-			return fmt.Errorf("添加配置文件失败: %s, %v", string(out), err)
-		}
+		addOutput, err := addCmd.CombinedOutput()
+		if err != nil {
+			log.Printf("添加配置文件失败，输出: %s", string(addOutput))
 
-		log.Printf("WiFi配置文件已添加")
+			// 尝试使用备用方法添加配置文件
+			log.Printf("尝试使用备用方法添加配置文件...")
+			addCmd2 := exec.Command("netsh", "wlan", "add", "profile",
+				fmt.Sprintf("filename=\"%s\"", tmpFile.Name()))
+
+			addOutput2, err2 := addCmd2.CombinedOutput()
+			if err2 != nil {
+				log.Printf("备用方法添加配置文件也失败，输出: %s", string(addOutput2))
+				return fmt.Errorf("添加配置文件失败: %s, %v", string(addOutput2), err2)
+			}
+
+			log.Printf("备用方法成功添加WiFi配置文件")
+		} else {
+			log.Printf("WiFi配置文件已添加，输出: %s", string(addOutput))
+		}
 	}
 
-	// 执行连接命令
-	log.Printf("执行WiFi连接命令: netsh wlan connect name=%s interface=%s", ssid, interfaceName)
+	// 尝试使用不同的连接方法
+	log.Printf("尝试方法1: 使用netsh wlan connect命令连接...")
+	log.Printf("执行WiFi连接命令: netsh wlan connect name=\"%s\" interface=%s", ssid, interfaceName)
 
 	// 设置命令环境变量，确保正确处理UTF-8
 	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("WiFi连接失败，输出: %s", string(out))
-		return fmt.Errorf("连接失败: %s, %v", string(out), err)
+		log.Printf("方法1连接失败，输出: %s", string(out))
+
+		// 尝试方法2: 使用ssid=代替name=
+		log.Printf("尝试方法2: 使用ssid=参数代替name=...")
+		cmd2 := exec.Command("netsh", "wlan", "connect",
+			fmt.Sprintf("ssid=\"%s\"", ssid),
+			fmt.Sprintf("interface=%s", interfaceName))
+		cmd2.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+		out2, err2 := cmd2.CombinedOutput()
+		if err2 != nil {
+			log.Printf("方法2连接失败，输出: %s", string(out2))
+
+			// 尝试方法3: 不使用引号
+			log.Printf("尝试方法3: 不使用引号包围SSID...")
+			cmd3 := exec.Command("netsh", "wlan", "connect",
+				fmt.Sprintf("name=%s", ssid),
+				fmt.Sprintf("interface=%s", interfaceName))
+			cmd3.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+
+			out3, err3 := cmd3.CombinedOutput()
+			if err3 != nil {
+				log.Printf("方法3连接失败，输出: %s", string(out3))
+				return fmt.Errorf("所有连接方法均失败，最后错误: %s, %v", string(out3), err3)
+			}
+
+			log.Printf("方法3连接成功")
+			return nil
+		}
+
+		log.Printf("方法2连接成功")
+		return nil
 	}
 
-	log.Printf("WiFi连接命令执行成功，原始SSID: %q", originalSSID)
+	log.Printf("方法1连接成功，原始SSID: %q", originalSSID)
 	return nil
 }
 
