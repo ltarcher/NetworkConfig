@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"networkconfig/models"
 	"os"
 	"os/exec"
@@ -1847,17 +1849,40 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 	// 确保SSID使用正确的编码
 	log.Printf("处理WiFi连接请求，原始SSID: %q", ssid)
 
+	// 检查SSID是否是URL编码的形式，如果是则进行解码
+	if strings.Contains(ssid, "%") {
+		decodedSSID, err := url.QueryUnescape(ssid)
+		if err != nil {
+			log.Printf("URL解码SSID失败: %v，将继续使用原始SSID", err)
+		} else {
+			ssid = decodedSSID
+			log.Printf("URL解码后的SSID: %q", ssid)
+		}
+	}
+
 	// 使用DecodeToUTF8确保SSID是UTF-8编码
 	ssidBytes := []byte(ssid)
 	decodedSSID, err := DecodeToUTF8(ssidBytes)
 	if err != nil {
-		log.Printf("SSID编码转换失败: %v，将使用原始SSID", err)
+		log.Printf("SSID编码转换失败: %v，将使用当前SSID", err)
 	} else {
 		ssid = string(decodedSSID)
-		log.Printf("转换后的SSID: %q", ssid)
+		log.Printf("编码转换后的SSID: %q", ssid)
 	}
 
-	// 构建连接命令
+	// 检查解码后的SSID是否仍然包含URL编码字符，如果包含则可能是多次编码
+	if strings.Contains(ssid, "%") {
+		log.Printf("SSID仍包含URL编码字符，尝试再次解码")
+		decodedSSID, err := url.QueryUnescape(ssid)
+		if err != nil {
+			log.Printf("二次URL解码失败: %v", err)
+		} else {
+			ssid = decodedSSID
+			log.Printf("二次URL解码后的SSID: %q", ssid)
+		}
+	}
+
+	// 构建连接命令，不使用双引号，直接使用解码后的SSID
 	cmd := exec.Command("netsh", "wlan", "connect",
 		fmt.Sprintf("name=%s", ssid),
 		fmt.Sprintf("interface=%s", interfaceName))
@@ -1865,13 +1890,19 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 	if password != "" {
 		log.Printf("WiFi需要密码，创建配置文件")
 
-		// 先删除已有配置文件
+		// 先删除已有配置文件，不使用双引号，直接使用解码后的SSID
 		deleteCmd := exec.Command("netsh", "wlan", "delete", "profile",
 			fmt.Sprintf("name=%s", ssid),
 			fmt.Sprintf("interface=%s", interfaceName))
 		if out, err := deleteCmd.CombinedOutput(); err != nil {
 			log.Printf("删除旧配置文件失败(可能不存在): %s", string(out))
 		}
+
+		// 对XML中的特殊字符进行转义
+		xmlEscapedSSID := html.EscapeString(ssid)
+		xmlEscapedPassword := html.EscapeString(password)
+
+		log.Printf("XML转义后的SSID: %q", xmlEscapedSSID)
 
 		// 创建XML配置文件，确保使用UTF-8编码
 		profile := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1898,7 +1929,7 @@ func (s *NetworkService) connectWiFiWindows(interfaceName, ssid, password string
 			</sharedKey>
 		</security>
 	</MSM>
-</WLANProfile>`, ssid, ssid, password)
+</WLANProfile>`, xmlEscapedSSID, xmlEscapedSSID, xmlEscapedPassword)
 
 		// 写入临时文件，确保使用UTF-8编码
 		tmpFile, err := os.CreateTemp("", "wifi_*.xml")
