@@ -17,7 +17,12 @@ const fetchingStatus = ref(false)
 const hotspotRules = {
   ssid: [
     { required: true, message: '请输入热点名称', trigger: 'blur' },
-    { min: 1, max: 32, message: '长度在1到32个字符之间', trigger: 'blur' }
+    { min: 1, max: 32, message: '长度在1到32个字符之间', trigger: 'blur' },
+    { 
+      pattern: /^[\u4e00-\u9fa5a-zA-Z0-9_\-@]+$/, 
+      message: '热点名称只能包含中英文、数字和_-@符号', 
+      trigger: 'blur' 
+    }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
